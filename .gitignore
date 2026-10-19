@@ -1,0 +1,46 @@
+# Flutter & Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+
+# Android
+.gradle/
+android/.gradle/
+android/.kotlin/
+android/local.properties
+*.keystore
+*.jks
+key.properties
+*.iml
+hs_err_pid*.log
+GeneratedPluginRegistrant.java
+
+# Python
+ai/.venv/
+__pycache__/
+*.pyc
+
+# Dataset & hasil training
+ai/dataset/
+ai/runs/
+ai/evaluations/
+ai/results/
+
+# Model sementara
+*.onnx
+yolo26n.pt
+
+# File konfigurasi rahasia
+env.json
+.env
+.env.*
+!.env.example
+
+# File sistem
+.DS_Store
+Thumbs.db

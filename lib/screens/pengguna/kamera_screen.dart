@@ -1,0 +1,818 @@
+
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import 'package:vibration/vibration.dart';
+
+import '../../services/detection_service.dart';
+import '../../services/location_service.dart';
+
+class KameraScreen extends StatefulWidget {
+  const KameraScreen({super.key});
+
+  @override
+  State<KameraScreen> createState() => _KameraScreenState();
+}
+
+class _KameraScreenState extends State<KameraScreen> {
+  static const String _model = 'yolo26n';
+
+  final DetectionService _deteksi = DetectionService();
+  final LocationService _lokasiService = LocationService();
+  final FlutterTts _tts = FlutterTts();
+
+  bool _voiceAktif = true;
+  bool _getarAktif = true;
+  bool _ttsSiap = false;
+
+  String _pesanNetra = 'Arahkan kamera ke lingkungan sekitar.';
+  String _confidence = '';
+  String _objekTerakhir = '';
+  int _jumlahObjek = 0;
+
+  String _namaJalan = 'Mencari lokasi...';
+  String _detailLokasi = 'Menunggu sinyal GPS';
+  String? _kesalahanLokasi;
+  bool _mencariAlamat = false;
+
+  Position? _posisiTerakhir;
+  Position? _posisiAlamat;
+  double _jarakMeter = 0;
+
+  StreamSubscription<Position>? _langgananGPS;
+  Timer? _timer;
+
+  late final DateTime _mulaiPerjalanan;
+  Duration _durasi = Duration.zero;
+
+  DateTime _waktuUI = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _waktuSuara = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _waktuAlamat = DateTime.fromMillisecondsSinceEpoch(0);
+
+  String _objekDiucapkan = '';
+
+  @override
+  void initState() {
+    super.initState();
+
+    _mulaiPerjalanan = DateTime.now();
+
+    _timer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) {
+        if (!mounted) return;
+
+        setState(() {
+          _durasi = DateTime.now().difference(_mulaiPerjalanan);
+        });
+      },
+    );
+
+    _siapkanSuara();
+    _aktifkanGPS();
+  }
+
+  Future<void> _siapkanSuara() async {
+    try {
+      await _tts.setLanguage('id-ID');
+      await _tts.setSpeechRate(0.48);
+      await _tts.setPitch(1.0);
+      await _tts.setVolume(1.0);
+      await _tts.awaitSpeakCompletion(false);
+
+      if (mounted) _ttsSiap = true;
+    } catch (e) {
+      debugPrint('NETRA TTS: $e');
+    }
+  }
+
+  Future<void> _aktifkanGPS() async {
+    await _langgananGPS?.cancel();
+    _langgananGPS = null;
+
+    if (!mounted) return;
+
+    setState(() {
+      _kesalahanLokasi = null;
+      _namaJalan = 'Mencari lokasi...';
+      _detailLokasi = 'Menunggu sinyal GPS';
+    });
+
+    try {
+      await _lokasiService.mintaIzinLokasi();
+
+      final posisi = await _lokasiService.posisiSekarang();
+
+      if (!mounted) return;
+
+      _terimaPosisi(posisi);
+
+      _langgananGPS = _lokasiService.pantauPosisi().listen(
+        _terimaPosisi,
+        onError: (Object error) {
+          if (!mounted) return;
+
+          setState(() {
+            _kesalahanLokasi = error.toString();
+            _detailLokasi = 'Pemantauan GPS terganggu';
+          });
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _namaJalan = 'Lokasi belum tersedia';
+        _detailLokasi = 'Ketuk kartu untuk mencoba kembali';
+        _kesalahanLokasi =
+            e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  void _terimaPosisi(Position posisi) {
+    if (!mounted) return;
+
+    // Penyaringan sederhana agar GPS yang meleset
+    // tidak langsung dihitung sebagai jarak berjalan.
+    final akurasiLayak =
+        posisi.accuracy.isFinite && posisi.accuracy <= 25;
+
+    if (_posisiTerakhir != null && akurasiLayak) {
+      final sebelumnya = _posisiTerakhir!;
+
+      final jarak = _lokasiService.jarakMeter(
+        sebelumnya,
+        posisi,
+      );
+
+      final selisihWaktu =
+          posisi.timestamp.difference(sebelumnya.timestamp);
+      final detik = selisihWaktu.inMilliseconds / 1000.0;
+
+      // Hanya menghitung gerakan yang cukup besar,
+      // masuk akal untuk berjalan, dan GPS cukup akurat.
+      if (sebelumnya.accuracy <= 25 &&
+          jarak >= 5 &&
+          detik > 0 &&
+          (jarak / detik) <= 3.0) {
+        _jarakMeter += jarak;
+        _posisiTerakhir = posisi;
+      } else if (jarak < 5) {
+        // Abaikan pergeseran kecil GPS.
+      } else if (jarak >= 5 &&
+          detik > 0 &&
+          (jarak / detik) <= 3.0) {
+        _posisiTerakhir = posisi;
+      }
+    } else if (_posisiTerakhir == null && akurasiLayak) {
+      _posisiTerakhir = posisi;
+    }
+
+    final koordinat =
+        '${posisi.latitude.toStringAsFixed(5)}, '
+        '${posisi.longitude.toStringAsFixed(5)}';
+
+    setState(() {
+      _kesalahanLokasi = null;
+
+      if (_namaJalan == 'Mencari lokasi...' ||
+          _namaJalan == 'Lokasi belum tersedia') {
+        _namaJalan = 'Lokasi GPS ditemukan';
+        _detailLokasi = koordinat;
+      }
+    });
+
+    _perbaruiAlamat(posisi);
+  }
+
+  Future<void> _perbaruiAlamat(Position posisi) async {
+    if (_mencariAlamat || !mounted) return;
+
+    final sekarang = DateTime.now();
+
+    if (_posisiAlamat != null) {
+      final perpindahan = _lokasiService.jarakMeter(
+        _posisiAlamat!,
+        posisi,
+      );
+
+      if (perpindahan < 40) return;
+
+      if (sekarang.difference(_waktuAlamat).inSeconds < 45) {
+        return;
+      }
+    }
+
+    _mencariAlamat = true;
+    _waktuAlamat = sekarang;
+
+    try {
+      final alamat = await _lokasiService.cariAlamat(posisi);
+
+      if (!mounted) return;
+
+      setState(() {
+        _namaJalan = alamat.namaJalan;
+        _detailLokasi = alamat.detailAlamat.isNotEmpty
+            ? alamat.detailAlamat
+            : 'Lokasi GPS aktif';
+        _posisiAlamat = posisi;
+      });
+    } catch (e) {
+      debugPrint('NETRA geocoding: $e');
+
+      // Koordinat tetap ditampilkan jika alamat gagal.
+      if (mounted && _posisiAlamat == null) {
+        setState(() {
+          _namaJalan = 'Lokasi GPS ditemukan';
+          _detailLokasi =
+              '${posisi.latitude.toStringAsFixed(5)}, '
+              '${posisi.longitude.toStringAsFixed(5)}';
+        });
+      }
+    } finally {
+      _mencariAlamat = false;
+    }
+  }
+
+  String _namaIndonesia(String nama) {
+    const tambahan = <String, String>{
+      'laptop': 'Laptop',
+      'cell phone': 'Telepon genggam',
+      'backpack': 'Tas punggung',
+      'handbag': 'Tas',
+      'bottle': 'Botol',
+      'dining table': 'Meja',
+      'tv': 'Televisi',
+      'potted plant': 'Tanaman',
+    };
+
+    return tambahan[nama.toLowerCase()] ??
+        _deteksi.namaObjekIndonesia(nama);
+  }
+
+  void _prosesDeteksi(List<YOLOResult> results) {
+    if (!mounted) return;
+
+    final sekarang = DateTime.now();
+
+    final valid = results
+        .where((hasil) => hasil.confidence >= 0.50)
+        .toList();
+
+    valid.sort(
+      (a, b) => b.confidence.compareTo(a.confidence),
+    );
+
+    // Suara tidak diulang terus pada setiap frame.
+    if (valid.isNotEmpty && _voiceAktif && _ttsSiap) {
+      final nama = _namaIndonesia(valid.first.className);
+
+      final objekBerubah = nama != _objekDiucapkan;
+      final jeda = objekBerubah ? 8 : 18;
+
+      if (sekarang.difference(_waktuSuara).inSeconds >= jeda) {
+        _waktuSuara = sekarang;
+        _objekDiucapkan = nama;
+        _ucapkanDeteksi(nama);
+      }
+    }
+
+    if (sekarang.difference(_waktuUI).inMilliseconds < 400) {
+      return;
+    }
+
+    _waktuUI = sekarang;
+
+    if (valid.isEmpty) {
+      setState(() {
+        _objekTerakhir = '';
+        _confidence = '';
+        _jumlahObjek = 0;
+        _pesanNetra = 'Belum ada objek terdeteksi.';
+      });
+      return;
+    }
+
+    final utama = valid.first;
+    final nama = _namaIndonesia(utama.className);
+
+    setState(() {
+      _objekTerakhir = nama;
+      _confidence =
+          '${(utama.confidence * 100).toStringAsFixed(1)}%';
+      _jumlahObjek = valid.length;
+      _pesanNetra = 'Terdeteksi $nama di area kamera.';
+    });
+  }
+
+  Future<void> _ucapkanDeteksi(String nama) async {
+    if (!_voiceAktif || !_ttsSiap || !mounted) return;
+
+    try {
+      await _tts.stop();
+
+      if (!_voiceAktif || !mounted) return;
+
+      await _tts.speak('NETRA mendeteksi $nama.');
+
+      if (_getarAktif && mounted) {
+        if (await Vibration.hasVibrator() == true) {
+          if (mounted && _getarAktif) {
+            await Vibration.vibrate(duration: 100);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('NETRA feedback: $e');
+    }
+  }
+
+  Future<void> _ubahVoice() async {
+    setState(() {
+      _voiceAktif = !_voiceAktif;
+    });
+
+    if (!_voiceAktif) {
+      await _tts.stop();
+    } else {
+      _waktuSuara = DateTime.now();
+    }
+  }
+
+  void _ubahGetar() {
+    setState(() {
+      _getarAktif = !_getarAktif;
+    });
+  }
+
+  String get _durasiTeks {
+    final jam = _durasi.inHours;
+    final menit = _durasi.inMinutes.remainder(60);
+    final detik = _durasi.inSeconds.remainder(60);
+
+    if (jam > 0) {
+      return '${jam.toString().padLeft(2, '0')}:'
+          '${menit.toString().padLeft(2, '0')}:'
+          '${detik.toString().padLeft(2, '0')}';
+    }
+
+    return '${menit.toString().padLeft(2, '0')}:'
+        '${detik.toString().padLeft(2, '0')}';
+  }
+
+  String get _jarakTeks {
+    if (_jarakMeter >= 1000) {
+      return '${(_jarakMeter / 1000).toStringAsFixed(2)} km';
+    }
+
+    return '${_jarakMeter.toStringAsFixed(0)} meter';
+  }
+
+  Future<void> _akhiriPerjalanan() async {
+    _voiceAktif = false;
+    await _tts.stop();
+    await _langgananGPS?.cancel();
+
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _langgananGPS?.cancel();
+    _voiceAktif = false;
+    _tts.stop();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F8FA),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+          child: Column(
+            children: [
+              // STATUS DAN PENGATURAN
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.circle,
+                          size: 9,
+                          color: Color(0xFF16A34A),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Perjalanan Aktif',
+                          style: GoogleFonts.poppins(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  _chipToggle(
+                    icon: _voiceAktif
+                        ? Icons.volume_up_outlined
+                        : Icons.volume_off_outlined,
+                    teks: 'Voice',
+                    aktif: _voiceAktif,
+                    ditekan: _ubahVoice,
+                  ),
+                  const SizedBox(width: 6),
+                  _chipToggle(
+                    icon: Icons.vibration,
+                    teks: 'Getar',
+                    aktif: _getarAktif,
+                    ditekan: _ubahGetar,
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 10),
+
+              // KAMERA YOLO
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(13),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: YOLOView(
+                          modelPath: _model,
+                          onResult: _prosesDeteksi,
+                        ),
+                      ),
+
+                      // BANNER SUARA
+                      Positioned(
+                        left: 10,
+                        right: 10,
+                        top: 10,
+                        child: Container(
+                          padding: const EdgeInsets.all(11),
+                          decoration: BoxDecoration(
+                            color: const Color(0xE6292D32),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.record_voice_over_outlined,
+                                color: Color(0xFF4ADE80),
+                                size: 17,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _voiceAktif
+                                          ? 'SUARA NETRA'
+                                          : 'SUARA DINONAKTIFKAN',
+                                      style: GoogleFonts.poppins(
+                                        color: const Color(0xFF4ADE80),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      _pesanNetra,
+                                      style: GoogleFonts.poppins(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                    if (_confidence.isNotEmpty)
+                                      Text(
+                                        '$_objekTerakhir • $_confidence',
+                                        style: GoogleFonts.poppins(
+                                          color: Colors.white70,
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // INFORMASI KAMERA
+                      Positioned(
+                        left: 10,
+                        right: 10,
+                        bottom: 10,
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xD9292D32),
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.videocam_outlined,
+                                color: Color(0xFF4ADE80),
+                                size: 17,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _jumlahObjek == 0
+                                      ? 'Kamera AI aktif. Arahkan ke depan.'
+                                      : '$_jumlahObjek objek terdeteksi oleh AI.',
+                                  style: GoogleFonts.poppins(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              // KARTU LOKASI ASLI
+              InkWell(
+                onTap: () {
+                  if (_kesalahanLokasi != null) {
+                    _aktifkanGPS();
+                  }
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(13),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE9EDFF),
+                          borderRadius: BorderRadius.circular(7),
+                        ),
+                        child: const Icon(
+                          Icons.location_on_outlined,
+                          color: Color(0xFF4269ED),
+                          size: 19,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'LOKASI SEKARANG',
+                              style: GoogleFonts.poppins(
+                                fontSize: 9,
+                                color: const Color(0xFF8290A5),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              _namaJalan,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF253047),
+                              ),
+                            ),
+                            Text(
+                              _kesalahanLokasi ??
+                                  _detailLokasi,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(
+                                fontSize: 10,
+                                color: _kesalahanLokasi == null
+                                    ? const Color(0xFF758195)
+                                    : const Color(0xFFC9161D),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_kesalahanLokasi != null)
+                        const Icon(
+                          Icons.refresh,
+                          color: Color(0xFF4269ED),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 9),
+
+              // JARAK DAN DURASI
+              Row(
+                children: [
+                  Expanded(
+                    child: _kartuStatistik(
+                      ikon: Icons.route_outlined,
+                      judul: 'Jarak Tempuh',
+                      nilai: _jarakTeks,
+                      warna: const Color(0xFF526079),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _kartuStatistik(
+                      ikon: Icons.timer_outlined,
+                      judul: 'Durasi Navigasi',
+                      nilai: _durasiTeks,
+                      warna: const Color(0xFF16A34A),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 10),
+
+              // AKHIRI PERJALANAN
+              SizedBox(
+                width: double.infinity,
+                height: 51,
+                child: ElevatedButton.icon(
+                  onPressed: _akhiriPerjalanan,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFC9161D),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  icon: const Icon(
+                    Icons.stop_circle_outlined,
+                    size: 19,
+                  ),
+                  label: Text(
+                    'Akhiri Perjalanan',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _chipToggle({
+    required IconData icon,
+    required String teks,
+    required bool aktif,
+    required VoidCallback ditekan,
+  }) {
+    return InkWell(
+      onTap: ditekan,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 9,
+          vertical: 7,
+        ),
+        decoration: BoxDecoration(
+          color: aktif
+              ? Colors.white
+              : const Color(0xFFE7EAF0),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 13,
+              color: aktif
+                  ? const Color(0xFF334155)
+                  : const Color(0xFF94A3B8),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              teks,
+              style: GoogleFonts.poppins(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: aktif
+                    ? const Color(0xFF334155)
+                    : const Color(0xFF94A3B8),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  
+  Widget _kartuStatistik({
+    required IconData ikon,
+    required String judul,
+    required String nilai,
+    required Color warna,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 10,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F2F6),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: warna.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(
+              ikon,
+              size: 15,
+              color: warna,
+            ),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  judul,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 9,
+                    color: const Color(0xFF788399),
+                  ),
+                ),
+                Text(
+                  nilai,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF263144),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
