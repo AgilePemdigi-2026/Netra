@@ -3,40 +3,37 @@ from pathlib import Path
 import torch
 from ultralytics import YOLO
 
-# Lokasi folder AI NETRA
 BASE_DIR = Path(__file__).resolve().parent
 
-# Lokasi dataset
-DATASET = (
-    BASE_DIR
-    / "dataset"
-    / "sidewalk_damage"
-    / "data.yaml"
-)
+# Dataset NETRA
+DATASET = BASE_DIR / "dataset" / "sidewalk_damage" / "data.yaml"
 
-# Folder hasil training
+# Model hasil training pertama (10 epoch)
+MODEL_PATH = BASE_DIR / "runs" / "sidewalk_v2" / "weights" / "best.pt"
+
+# Folder hasil eksperimen
 OUTPUT_DIR = BASE_DIR / "runs"
 
-# Periksa GPU
-if torch.cuda.is_available():
-    device = 0
-    print("GPU NVIDIA CUDA terdeteksi.")
-else:
-    device = "cpu"
-    print("GPU CUDA tidak tersedia. Menggunakan CPU.")
+device = 0 if torch.cuda.is_available() else "cpu"
 
-print("\n================================")
-print("TRAINING YOLO NETRA")
-print("KELAS: LOSA-AGRIETADA")
+print("================================")
+print("NETRA - SIDEWALK FINE-TUNING V2")
 print("================================")
 
-print(f"Dataset: {DATASET}")
-print(f"Device : {device}")
+print(f"Model   : {MODEL_PATH}")
+print(f"Dataset : {DATASET}")
+print(f"Device  : {device}")
 
-# Model YOLO pretrained
-model = YOLO("yolo26n.pt")
+if not MODEL_PATH.exists():
+    raise FileNotFoundError(f"Model tidak ditemukan: {MODEL_PATH}")
 
-# Percobaan training pertama
+if not DATASET.exists():
+    raise FileNotFoundError(f"Dataset tidak ditemukan: {DATASET}")
+
+# Menggunakan model hasil training sebelumnya
+model = YOLO(str(MODEL_PATH))
+
+# Fine-tuning tambahan 10 epoch
 model.train(
     data=str(DATASET),
     epochs=10,
@@ -44,10 +41,11 @@ model.train(
     batch=4,
     device=device,
     workers=0,
+    patience=15,
     project=str(OUTPUT_DIR),
-    name="sidewalk_v1",
+    name="sidewalk_v3",
     exist_ok=False,
 )
 
 print("\nTRAINING SELESAI!")
-print("Hasil tersimpan di folder ai/runs.")
+print("Hasil tersimpan di ai/runs/sidewalk_v3")
