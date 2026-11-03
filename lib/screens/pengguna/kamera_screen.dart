@@ -10,6 +10,7 @@ import 'package:vibration/vibration.dart';
 
 import '../../services/detection_service.dart';
 import '../../services/location_service.dart';
+import 'laporan_perjalanan_screen.dart'; // berisi LaporanPerjalananScreen & TemuanRintangan
 
 class KameraScreen extends StatefulWidget {
   const KameraScreen({super.key});
@@ -21,7 +22,20 @@ class KameraScreen extends StatefulWidget {
 class _KameraScreenState extends State<KameraScreen> {
   static const String _model = 'yolo26n';
   static const String _petunjukSuara =
-      ' Tekan tombol mikrofon lalu ucapkan perintah.';
+      '“Ya, aku sudah sampai. Mau mengakhiri.”';
+
+  // Daftar kelas yang dianggap RINTANGAN / HAMBATAN.
+  // Kunci HARUS sama persis dengan nama kelas di model YOLO kamu (huruf kecil).
+  // Model bawaan yolo26n (COCO) belum punya kelas lubang / trotoar rusak,
+  // jadi perlu model custom. Untuk uji coba, bisa tambahkan kelas COCO,
+  // misalnya: 'bench': 'Bangku', 'person': 'Penghalang'.
+  static const Map<String, String> _kelasRintangan = {
+    'pothole': 'Jalan berlubang',
+    'damaged_sidewalk': 'Trotoar rusak',
+    'open_manhole': 'Lubang drainase terbuka',
+    'stairs': 'Tangga',
+    'pole': 'Tiang',
+  };
 
   // Tinggi area bawah saat perjalanan dijeda (tombol + panel suara).
   // 48 (Ya) + 10 + 46 (Tidak) + 10 + 58 (panel suara)
@@ -36,6 +50,7 @@ class _KameraScreenState extends State<KameraScreen> {
   bool _getarAktif = true;
   bool _ttsSiap = false;
   bool _konfirmasiTerbuka = false; // true = perjalanan dijeda
+  bool _sedangMengakhiri = false;
   bool _mendengarkan = false;
   bool _speechSiap = false;
   String _statusSuara = _petunjukSuara;
@@ -44,7 +59,12 @@ class _KameraScreenState extends State<KameraScreen> {
   String _confidence = '';
   String _objekTerakhir = '';
   int _jumlahObjek = 0;
+
+  // Data rintangan yang terkumpul selama perjalanan.
   int _totalRintangan = 0;
+  final Map<String, DateTime> _waktuRintangan = {};
+  final Map<String, Position> _posisiRintangan = {};
+  final List<TemuanRintangan> _daftarTemuan = [];
 
   String _namaJalan = 'Mencari lokasi...';
   String _detailLokasi = 'Menunggu sinyal GPS';
@@ -284,6 +304,54 @@ class _KameraScreenState extends State<KameraScreen> {
     return tambahan[nama.toLowerCase()] ?? _deteksi.namaObjekIndonesia(nama);
   }
 
+  // ---------------------------------------------------------------------------
+  // PENCATATAN RINTANGAN
+  // ---------------------------------------------------------------------------
+
+  /// Mencatat satu temuan rintangan. Rintangan yang sama yang terlihat terus
+  /// menerus hanya dihitung sekali: jenis sama baru dihitung lagi bila sudah
+  /// lewat 10 detik DAN lokasi pengguna bergeser minimal 5 meter.
+  void _catatRintangan(String kelas, String label, double confidence) {
+    final sekarang = DateTime.now();
+    final posisi = _posisiTerakhir;
+
+    final waktuLalu = _waktuRintangan[kelas];
+    final posisiLalu = _posisiRintangan[kelas];
+
+    if (waktuLalu != null) {
+      if (sekarang.difference(waktuLalu).inSeconds < 10) return;
+
+      if (posisi != null &&
+          posisiLalu != null &&
+          _lokasiService.jarakMeter(posisiLalu, posisi) < 5) {
+        return;
+      }
+    }
+
+    _waktuRintangan[kelas] = sekarang;
+    if (posisi != null) _posisiRintangan[kelas] = posisi;
+
+    // Nama jalan untuk laporan.
+    String jalan = _namaJalan;
+    if (jalan == 'Mencari lokasi...' || jalan == 'Lokasi belum tersedia') {
+      jalan = 'Lokasi tidak diketahui';
+    } else if (jalan == 'Lokasi GPS ditemukan') {
+      jalan = _detailLokasi; // berisi koordinat
+    }
+
+    _totalRintangan++;
+    _daftarTemuan.add(
+      TemuanRintangan(
+        jenis: label,
+        confidence: confidence,
+        waktu: sekarang,
+        namaJalan: jalan,
+        latitude: posisi?.latitude,
+        longitude: posisi?.longitude,
+      ),
+    );
+  }
+
   void _prosesDeteksi(List<YOLOResult> results) {
     // Saat perjalanan dijeda, abaikan seluruh hasil YOLO.
     if (!mounted || _konfirmasiTerbuka) return;
@@ -294,9 +362,17 @@ class _KameraScreenState extends State<KameraScreen> {
 
     valid.sort((a, b) => b.confidence.compareTo(a.confidence));
 
-    // Setiap temuan baru dihitung sebagai 1 rintangan (dengan jeda waktu),
-    // suara tidak diulang terus pada setiap frame.
-    if (valid.isNotEmpty) {
+    // Catat hanya objek yang termasuk daftar rintangan.
+    for (final hasil in valid) {
+      final kelas = hasil.className.toLowerCase();
+      final label = _kelasRintangan[kelas];
+      if (label != null) {
+        _catatRintangan(kelas, label, hasil.confidence);
+      }
+    }
+
+    // Suara tidak diulang terus pada setiap frame.
+    if (valid.isNotEmpty && _voiceAktif && _ttsSiap) {
       final nama = _namaIndonesia(valid.first.className);
 
       final objekBerubah = nama != _objekDiucapkan;
@@ -305,11 +381,7 @@ class _KameraScreenState extends State<KameraScreen> {
       if (sekarang.difference(_waktuSuara).inSeconds >= jeda) {
         _waktuSuara = sekarang;
         _objekDiucapkan = nama;
-        _totalRintangan++;
-
-        if (_voiceAktif && _ttsSiap) {
-          _ucapkanDeteksi(nama);
-        }
+        _ucapkanDeteksi(nama);
       }
     }
 
@@ -410,7 +482,7 @@ class _KameraScreenState extends State<KameraScreen> {
   Future<void> _akhiriPerjalanan() async {
     if (_konfirmasiTerbuka) return;
 
-    // Jeda: hentikan suara dan bekukan hasil deteksi.
+    // Jeda: hentikan suara deteksi dan bekukan hasil deteksi.
     await _tts.stop();
     await _speech.stop();
     if (!mounted) return;
@@ -420,9 +492,36 @@ class _KameraScreenState extends State<KameraScreen> {
       _mendengarkan = false;
       _statusSuara = _petunjukSuara;
     });
+
+    _ucapkanKonfirmasi();
+  }
+
+  /// Membacakan pertanyaan konfirmasi, lalu otomatis menyalakan mikrofon.
+  Future<void> _ucapkanKonfirmasi() async {
+    if (!_ttsSiap) return;
+
+    try {
+      // Tunggu sampai kalimat selesai diucapkan.
+      await _tts.awaitSpeakCompletion(true);
+      await _tts.speak(
+        'Apakah Anda ingin mengakhiri perjalanan? Ucapkan iya atau tidak.',
+      );
+      await _tts.awaitSpeakCompletion(false);
+
+      // Kalau pengguna sudah memilih saat TTS berbicara, jangan nyalakan mic.
+      if (!mounted || !_konfirmasiTerbuka || _mendengarkan) return;
+
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (mounted && _konfirmasiTerbuka && !_mendengarkan) {
+        _tekanUntukBerbicara();
+      }
+    } catch (e) {
+      debugPrint('NETRA konfirmasi suara: $e');
+    }
   }
 
   Future<void> _lanjutkanPerjalanan() async {
+    await _tts.stop();
     await _speech.stop();
     if (!mounted) return;
 
@@ -436,9 +535,11 @@ class _KameraScreenState extends State<KameraScreen> {
   }
 
   Future<void> _selesaikanPerjalanan() async {
+    if (_sedangMengakhiri) return; // cegah terpanggil 2x (tombol + suara)
+    _sedangMengakhiri = true;
+
     await _speech.stop();
 
-    // TODO: nanti ganti Navigator.pop dengan halaman Ringkasan Temuan Aksesibilitas.
     _voiceAktif = false;
     await _tts.stop();
     _timer?.cancel();
@@ -446,7 +547,16 @@ class _KameraScreenState extends State<KameraScreen> {
     _langgananGPS = null;
 
     if (!mounted) return;
-    Navigator.of(context).pop(); // Untuk sekarang kembali ke beranda.
+
+    // pushReplacement: layar kamera diganti halaman laporan,
+    // jadi saat laporan ditutup, rute di bawahnya adalah beranda.
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => LaporanPerjalananScreen(
+          temuan: List<TemuanRintangan>.unmodifiable(_daftarTemuan),
+        ),
+      ),
+    );
   }
 
   Future<void> _tekanUntukBerbicara() async {
@@ -473,6 +583,9 @@ class _KameraScreenState extends State<KameraScreen> {
       });
       return;
     }
+
+    await _tts.stop();
+    if (!mounted) return;
 
     setState(() {
       _mendengarkan = true;
