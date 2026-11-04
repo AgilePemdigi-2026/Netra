@@ -44,3 +44,4 @@ env.json
 # File sistem
 .DS_Store
 Thumbs.db
+hasil_bdd.json

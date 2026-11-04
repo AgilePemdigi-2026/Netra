@@ -1,9 +1,10 @@
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../services/feedback_service.dart';
+import '../admin/login_screen.dart';
 import 'kamera_screen.dart';
+import 'pengaturan_screen.dart';
 
 class BerandaScreen extends StatefulWidget {
   const BerandaScreen({super.key});
@@ -42,11 +43,9 @@ class _BerandaScreenState extends State<BerandaScreen> {
   // PANDUAN PENGGUNAAN
   Future<void> _panduanPenggunaan() async {
     if (!_suaraSiap) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Fitur suara belum siap.'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Fitur suara belum siap.')));
       return;
     }
 
@@ -68,11 +67,9 @@ class _BerandaScreenState extends State<BerandaScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal memutar panduan: $e'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal memutar panduan: $e')));
     } finally {
       if (mounted) {
         setState(() {
@@ -100,20 +97,28 @@ class _BerandaScreenState extends State<BerandaScreen> {
     // Membuka halaman Kamera Deteksi.
     await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const KameraScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const KameraScreen()),
     );
   }
 
-  // FITUR YANG BELUM TERSEDIA
-  void _fiturBelumTersedia(String namaFitur) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '$namaFitur akan dikembangkan pada tahap berikutnya.',
-        ),
-      ),
+  // MEMBUKA HALAMAN LOGIN ADMIN
+  Future<void> _bukaLogin() async {
+    // Hentikan panduan suara jika masih berjalan.
+    try {
+      await _feedback.berhenti();
+    } catch (e) {
+      debugPrint('Gagal menghentikan suara: $e');
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _panduanAktif = false;
+    });
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
     );
   }
 
@@ -154,11 +159,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
                               width: 32,
                               height: 32,
                               fit: BoxFit.contain,
-                              errorBuilder: (
-                                context,
-                                error,
-                                stackTrace,
-                              ) {
+                              errorBuilder: (context, error, stackTrace) {
                                 return const Icon(
                                   Icons.account_balance,
                                   color: Color(0xFF0A3277),
@@ -186,11 +187,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
                               ),
                               child: IconButton(
                                 tooltip: 'Login Admin',
-                                onPressed: () {
-                                  _fiturBelumTersedia(
-                                    'Login Admin',
-                                  );
-                                },
+                                onPressed: _bukaLogin,
                                 icon: const Icon(
                                   Icons.person_outline,
                                   color: Colors.white,
@@ -210,11 +207,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
                           width: 200,
                           height: 70,
                           fit: BoxFit.contain,
-                          errorBuilder: (
-                            context,
-                            error,
-                            stackTrace,
-                          ) {
+                          errorBuilder: (context, error, stackTrace) {
                             return Text(
                               'NETRA',
                               style: GoogleFonts.poppins(
@@ -269,11 +262,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
                           child: Image.asset(
                             'assets/images/logo_netra.png',
                             fit: BoxFit.contain,
-                            errorBuilder: (
-                              context,
-                              error,
-                              stackTrace,
-                            ) {
+                            errorBuilder: (context, error, stackTrace) {
                               return const Icon(
                                 Icons.visibility,
                                 size: 110,
@@ -294,21 +283,16 @@ class _BerandaScreenState extends State<BerandaScreen> {
                           child: ElevatedButton(
                             onPressed: _mulaiPerjalanan,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  const Color(0xFF2455E8),
+                              backgroundColor: const Color(0xFF2455E8),
                               foregroundColor: Colors.white,
                               elevation: 3,
                               shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(14),
+                                borderRadius: BorderRadius.circular(14),
                               ),
                             ),
                             child: Row(
                               children: [
-                                const Icon(
-                                  Icons.accessibility_new,
-                                  size: 26,
-                                ),
+                                const Icon(Icons.accessibility_new, size: 26),
 
                                 const SizedBox(width: 14),
 
@@ -322,9 +306,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
                                   ),
                                 ),
 
-                                const Icon(
-                                  Icons.arrow_forward_rounded,
-                                ),
+                                const Icon(Icons.arrow_forward_rounded),
                               ],
                             ),
                           ),
@@ -354,8 +336,10 @@ class _BerandaScreenState extends State<BerandaScreen> {
                           icon: Icons.settings_outlined,
                           label: 'Pengaturan Suara & Haptik',
                           onPressed: () {
-                            _fiturBelumTersedia(
-                              'Pengaturan Suara & Haptik',
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const PengaturanScreen(),
+                              ),
                             );
                           },
                         ),
@@ -396,10 +380,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
         ),
         child: Row(
           children: [
-            Icon(
-              icon,
-              color: const Color(0xFF64748B),
-            ),
+            Icon(icon, color: const Color(0xFF64748B)),
 
             const SizedBox(width: 14),
 
@@ -413,10 +394,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
               ),
             ),
 
-            const Icon(
-              Icons.chevron_right,
-              color: Color(0xFF64748B),
-            ),
+            const Icon(Icons.chevron_right, color: Color(0xFF64748B)),
           ],
         ),
       ),
