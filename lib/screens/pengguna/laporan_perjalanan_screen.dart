@@ -1,14 +1,16 @@
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 /// Satu temuan hambatan yang terdeteksi selama perjalanan.
 class TemuanRintangan {
   final String jenis;
-  final double confidence; // 0.0 - 1.0
+  final double confidence;
   final DateTime waktu;
   final double? latitude;
   final double? longitude;
@@ -23,7 +25,6 @@ class TemuanRintangan {
     this.longitude,
   });
 
-  /// Contoh: 0.7750 -> "77,50%"
   String get akurasiTeks =>
       '${(confidence * 100).toStringAsFixed(2).replaceAll('.', ',')}%';
 }
@@ -47,13 +48,26 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
   bool _mendengarkan = false;
   bool _mengirim = false;
 
+  String _bahasa = 'id-ID';
   late String _statusSuara;
 
+  bool get _bahasaInggris => _bahasa == 'en-US';
   bool get _adaTemuan => widget.temuan.isNotEmpty;
 
-  String get _petunjukSuara => _adaTemuan
-      ? '“Ya. Kirim ke Dinas Sosial.”'
-      : 'Tidak. Kembali ke beranda.”';
+  String get _petunjukSuara {
+    if (_bahasaInggris) {
+      return _adaTemuan
+          ? '“Yes, send the report.”'
+          : 'Say “No” to return to the home page.';
+    }
+
+    return _adaTemuan
+        ? '“Ya. Kirim laporan.”'
+        : 'Ucapkan “Tidak” untuk kembali ke beranda.';
+  }
+
+  String _teks(String indonesia, String inggris) =>
+      _bahasaInggris ? inggris : indonesia;
 
   @override
   void initState() {
@@ -63,6 +77,17 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
   }
 
   Future<void> _mulai() async {
+    // Ambil bahasa yang sudah disimpan dari halaman Pengaturan.
+    final prefs = await SharedPreferences.getInstance();
+    _bahasa = prefs.getString('netra_bahasa') ?? 'id-ID';
+
+    if (!mounted) return;
+
+    setState(() {
+      _statusSuara = _petunjukSuara;
+    });
+
+    await _siapkanSuara();
     await _siapkanPengenalanSuara();
     await _bacakanLaporan();
   }
@@ -73,7 +98,7 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
 
   Future<void> _siapkanSuara() async {
     try {
-      await _tts.setLanguage('id-ID');
+      await _tts.setLanguage(_bahasa);
       await _tts.setSpeechRate(0.48);
       await _tts.setPitch(1.0);
       await _tts.setVolume(1.0);
@@ -81,6 +106,7 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
       _ttsSiap = true;
     } catch (e) {
       debugPrint('NETRA laporan TTS: $e');
+      _ttsSiap = false;
     }
   }
 
@@ -89,11 +115,16 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
       _speechSiap = await _speech.initialize(
         onStatus: (status) {
           if (!mounted) return;
+
           if (status == 'notListening' && _mendengarkan) {
             setState(() {
               _mendengarkan = false;
-              if (_statusSuara == 'Mendengarkan...') {
-                _statusSuara = 'Tekan untuk mencoba lagi';
+              if (_statusSuara == 'Mendengarkan...' ||
+                  _statusSuara == 'Listening...') {
+                _statusSuara = _teks(
+                  'Tekan untuk mencoba lagi',
+                  'Tap to try again',
+                );
               }
             });
           }
@@ -101,9 +132,13 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
         onError: (error) {
           debugPrint('NETRA laporan speech: ${error.errorMsg}');
           if (!mounted) return;
+
           setState(() {
             _mendengarkan = false;
-            _statusSuara = 'Suara belum dikenali. Coba lagi.';
+            _statusSuara = _teks(
+              'Suara belum dikenali. Coba lagi.',
+              'Voice not recognized. Please try again.',
+            );
           });
         },
       );
@@ -115,30 +150,54 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
 
   /// Membacakan ringkasan laporan, lalu otomatis menyalakan mikrofon.
   Future<void> _bacakanLaporan() async {
-    await _siapkanSuara();
     if (!mounted || !_ttsSiap) return;
 
-    final teks = StringBuffer('Laporan perjalanan. ');
+    final teks = StringBuffer(
+      _teks('Laporan perjalanan. ', 'Trip report. '),
+    );
 
     if (_adaTemuan) {
       final total = widget.temuan.length;
       final batas = total > 5 ? 5 : total;
 
-      teks.write('Ditemukan $total temuan masalah. ');
+      teks.write(
+        _bahasaInggris
+            ? '$total accessibility obstacles were found. '
+            : 'Ditemukan $total temuan masalah. ',
+      );
+
       for (var i = 0; i < batas; i++) {
         final t = widget.temuan[i];
-        teks.write('${i + 1}. ${t.jenis}, di ${t.namaJalan}. ');
+
+        teks.write(
+          _bahasaInggris
+              ? '${i + 1}. ${_jenisInggris(t.jenis)}, at ${t.namaJalan}. '
+              : '${i + 1}. ${t.jenis}, di ${t.namaJalan}. ',
+        );
       }
+
       if (total > batas) {
-        teks.write('Dan ${total - batas} temuan lainnya. ');
+        teks.write(
+          _bahasaInggris
+              ? 'And ${total - batas} more findings. '
+              : 'Dan ${total - batas} temuan lainnya. ',
+        );
       }
+
       teks.write(
-        'Apakah Anda ingin mengirim laporan ini ke Dinas Sosial Kota Surabaya? '
-        'Ucapkan ya untuk mengirim, atau tidak untuk membatalkan.',
+        _teks(
+          'Apakah Anda ingin mengirim laporan ini ke Dinas Sosial Kota Surabaya? '
+          'Ucapkan ya untuk mengirim, atau tidak untuk kembali ke beranda.',
+          'Would you like to send this report to the Surabaya Social Services Office? '
+          'Say yes to send, or no to return to the home page.',
+        ),
       );
     } else {
       teks.write(
-        'Tidak ditemukan hambatan. Ucapkan tidak untuk kembali ke beranda.',
+        _teks(
+          'Tidak ditemukan hambatan. Ucapkan tidak untuk kembali ke beranda.',
+          'No obstacles were found. Say no to return to the home page.',
+        ),
       );
     }
 
@@ -151,9 +210,22 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
     if (!mounted || _mendengarkan || _mengirim) return;
 
     await Future.delayed(const Duration(milliseconds: 300));
+
     if (mounted && !_mendengarkan && !_mengirim) {
       _tekanUntukBerbicara();
     }
+  }
+
+  String _jenisInggris(String jenis) {
+    const terjemahan = <String, String>{
+      'Jalan berlubang': 'Pothole',
+      'Trotoar rusak': 'Damaged sidewalk',
+      'Lubang drainase terbuka': 'Open manhole',
+      'Tangga': 'Stairs',
+      'Tiang': 'Pole',
+    };
+
+    return terjemahan[jenis] ?? jenis;
   }
 
   Future<void> _tekanUntukBerbicara() async {
@@ -162,12 +234,15 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
     if (!_speechSiap) {
       await _siapkanPengenalanSuara();
     }
+
     if (!mounted) return;
 
     if (!_speechSiap) {
       setState(() {
-        _statusSuara =
-            'Pengenalan suara tidak tersedia. Gunakan tombol di layar.';
+        _statusSuara = _teks(
+          'Pengenalan suara tidak tersedia. Gunakan tombol di layar.',
+          'Speech recognition is unavailable. Please use the buttons on screen.',
+        );
       });
       return;
     }
@@ -175,6 +250,7 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
     if (_mendengarkan) {
       await _speech.stop();
       if (!mounted) return;
+
       setState(() {
         _mendengarkan = false;
         _statusSuara = _petunjukSuara;
@@ -187,11 +263,11 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
 
     setState(() {
       _mendengarkan = true;
-      _statusSuara = 'Mendengarkan...';
+      _statusSuara = _teks('Mendengarkan...', 'Listening...');
     });
 
     await _speech.listen(
-      localeId: 'id_ID',
+      localeId: _bahasaInggris ? 'en_US' : 'id_ID',
       listenFor: const Duration(seconds: 8),
       pauseFor: const Duration(seconds: 3),
       onResult: (result) async {
@@ -200,42 +276,65 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
         final kata = result.recognizedWords.toLowerCase().trim();
         if (kata.isEmpty) return;
 
-        setState(() => _statusSuara = 'Terdengar: $kata');
+        setState(() => _statusSuara = '${_teks('Terdengar', 'Heard')}: $kata');
 
         if (!result.finalResult) return;
 
-        // "Batal" dicek lebih dulu agar "tidak mau kirim" tidak terbaca "kirim".
-        final batal =
-            kata.contains('batal') ||
-            kata.contains('tidak') ||
-            kata.contains('enggak') ||
-            kata.contains('nggak') ||
-            kata.contains('kembali');
+        // Perintah negatif dicek lebih dahulu.
+        // Contoh: "tidak mau kirim" tidak boleh dianggap sebagai perintah kirim.
+        final tidak = _bahasaInggris
+            ? kata == 'no' ||
+                kata.startsWith('no ') ||
+                kata.contains('do not') ||
+                kata.contains("don't") ||
+                kata.contains('cancel') ||
+                kata.contains('go back') ||
+                kata.contains('return')
+            : kata.contains('tidak') ||
+                kata.contains('enggak') ||
+                kata.contains('engga') ||
+                kata.contains('nggak') ||
+                kata.contains('batal') ||
+                kata.contains('kembali');
 
-        final kirim =
-            kata.contains('kirim') ||
-            kata == 'ya' ||
-            kata == 'iya' ||
-            kata.startsWith('ya ') ||
-            kata.startsWith('iya ');
+        final iya = _bahasaInggris
+            ? kata == 'yes' ||
+                kata == 'yeah' ||
+                kata == 'yep' ||
+                kata.startsWith('yes ') ||
+                kata.contains('send')
+            : kata == 'ya' ||
+                kata == 'iya' ||
+                kata.startsWith('ya ') ||
+                kata.startsWith('iya ') ||
+                kata.contains('kirim');
 
-        if (batal) {
+        if (tidak) {
           await _batal();
-        } else if (kirim) {
+        } else if (iya) {
           if (_adaTemuan) {
             await _kirim();
           } else {
             setState(() {
               _mendengarkan = false;
-              _statusSuara = 'Tidak ada laporan untuk dikirim';
+              _statusSuara = _teks(
+                'Tidak ada laporan untuk dikirim',
+                'There is no report to send',
+              );
             });
           }
         } else {
           setState(() {
             _mendengarkan = false;
             _statusSuara = _adaTemuan
-                ? 'Ucapkan “Kirim” atau “Tidak”'
-                : 'Ucapkan “Tidak”';
+                ? _teks(
+                    'Ucapkan “Kirim” atau “Tidak”',
+                    'Say “Send” or “No”',
+                  )
+                : _teks(
+                    'Ucapkan “Tidak”',
+                    'Say “No”',
+                  );
           });
         }
       },
@@ -248,12 +347,12 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
 
   void _kembaliKeBeranda() {
     if (!mounted) return;
-    // Kembali ke route paling awal (beranda).
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   Future<void> _batal() async {
     if (_mengirim) return;
+
     await _speech.stop();
     await _tts.stop();
     _kembaliKeBeranda();
@@ -277,23 +376,34 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
     } catch (e) {
       debugPrint('NETRA kirim laporan: $e');
       if (!mounted) return;
+
       setState(() => _mengirim = false);
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Laporan gagal dikirim. Coba lagi.')),
+        SnackBar(
+          content: Text(
+            _teks(
+              'Laporan gagal dikirim. Coba lagi.',
+              'Failed to send the report. Please try again.',
+            ),
+          ),
+        ),
       );
       return;
     }
 
     if (!mounted) return;
+
     setState(() => _mengirim = false);
     _tampilkanBerhasil();
   }
 
   Future<void> _tampilkanBerhasil() async {
-    const pesan =
-        'Laporan temuan masalah berhasil dikirimkan ke Dinas Sosial Kota Surabaya';
+    final pesan = _teks(
+      'Laporan temuan masalah berhasil dikirimkan ke Dinas Sosial Kota Surabaya',
+      'The obstacle report has been successfully sent to the Surabaya Social Services Office',
+    );
 
-    // Tidak di-await: dialog tampil sambil suara dibacakan.
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -334,7 +444,7 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Berhasil Terkirim',
+                _teks('Berhasil Terkirim', 'Successfully Sent'),
                 textAlign: TextAlign.center,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 18,
@@ -369,7 +479,7 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
                     ),
                   ),
                   child: Text(
-                    'Kembali ke Beranda',
+                    _teks('Kembali ke Beranda', 'Back to Home'),
                     style: GoogleFonts.plusJakartaSans(
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
@@ -383,7 +493,6 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
       ),
     );
 
-    // Bacakan pesan sampai selesai, lalu otomatis kembali ke beranda.
     try {
       if (_ttsSiap) {
         await _tts.speak('$pesan.');
@@ -487,8 +596,14 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
           const SizedBox(height: 4),
           Text(
             _adaTemuan
-                ? 'Apakah Anda ingin mengirim laporan ini ke Dinas Sosial Kota Surabaya?'
-                : 'Tidak Ditemukan Hambatan',
+                ? _teks(
+                    'Apakah Anda ingin mengirim laporan ini ke Dinas Sosial Kota Surabaya?',
+                    'Would you like to send this report to the Surabaya Social Services Office?',
+                  )
+                : _teks(
+                    'Tidak Ditemukan Hambatan',
+                    'No Obstacles Found',
+                  ),
             style: GoogleFonts.plusJakartaSans(
               fontSize: 13,
               height: 1.4,
@@ -511,7 +626,6 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
       ),
       child: Column(
         children: [
-          // HEADER JUMLAH TEMUAN
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -538,9 +652,7 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
               ],
             ),
           ),
-
           const SizedBox(height: 10),
-
           for (var i = 0; i < widget.temuan.length; i++) ...[
             _itemTemuan(i + 1, widget.temuan[i]),
             if (i != widget.temuan.length - 1) const SizedBox(height: 10),
@@ -551,7 +663,6 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
   }
 
   Widget _itemTemuan(int nomor, TemuanRintangan t) {
-    // Akurasi tinggi (>= 90%) ditandai hijau.
     final tinggi = t.confidence >= 0.90;
 
     return Container(
@@ -694,7 +805,7 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
         onPressed: _mengirim ? null : _batal,
         icon: const Icon(Icons.close, size: 18),
         label: Text(
-          'Batal',
+          'Tidak',
           style: GoogleFonts.plusJakartaSans(
             fontSize: 15,
             fontWeight: FontWeight.w600,

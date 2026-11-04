@@ -4,13 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:vibration/vibration.dart';
 
 import '../../services/detection_service.dart';
 import '../../services/location_service.dart';
-import 'laporan_perjalanan_screen.dart'; // berisi LaporanPerjalananScreen & TemuanRintangan
+import 'laporan_perjalanan_screen.dart';
 
 class KameraScreen extends StatefulWidget {
   const KameraScreen({super.key});
@@ -21,15 +22,10 @@ class KameraScreen extends StatefulWidget {
 
 class _KameraScreenState extends State<KameraScreen> {
   static const String _model = 'yolo26n';
-  static const String _petunjukSuara =
-      '“Ya, aku sudah sampai. Mau mengakhiri.”';
 
-  // Daftar kelas yang dianggap RINTANGAN / HAMBATAN.
-  // Kunci HARUS sama persis dengan nama kelas di model YOLO kamu (huruf kecil).
-  // Model bawaan yolo26n (COCO) belum punya kelas lubang / trotoar rusak,
-  // jadi perlu model custom. Untuk uji coba, bisa tambahkan kelas COCO,
-  // misalnya: 'bench': 'Bangku', 'person': 'Penghalang'.
-  static const Map<String, String> _kelasRintangan = {
+  static const double _tinggiAreaBawahJeda = 172;
+
+  static const Map<String, String> _kelasRintanganIndonesia = {
     'pothole': 'Jalan berlubang',
     'damaged_sidewalk': 'Trotoar rusak',
     'open_manhole': 'Lubang drainase terbuka',
@@ -37,9 +33,95 @@ class _KameraScreenState extends State<KameraScreen> {
     'pole': 'Tiang',
   };
 
-  // Tinggi area bawah saat perjalanan dijeda (tombol + panel suara).
-  // 48 (Ya) + 10 + 46 (Tidak) + 10 + 58 (panel suara)
-  static const double _tinggiAreaBawahJeda = 172;
+  static const Map<String, String> _kelasRintanganEnglish = {
+    'pothole': 'Pothole',
+    'damaged_sidewalk': 'Damaged sidewalk',
+    'open_manhole': 'Open manhole',
+    'stairs': 'Stairs',
+    'pole': 'Pole',
+  };
+
+  static const Map<String, String> _objekEnglish = {
+    'person': 'Person',
+    'bicycle': 'Bicycle',
+    'car': 'Car',
+    'motorcycle': 'Motorcycle',
+    'airplane': 'Airplane',
+    'bus': 'Bus',
+    'train': 'Train',
+    'truck': 'Truck',
+    'boat': 'Boat',
+    'traffic light': 'Traffic light',
+    'fire hydrant': 'Fire hydrant',
+    'stop sign': 'Stop sign',
+    'bench': 'Bench',
+    'bird': 'Bird',
+    'cat': 'Cat',
+    'dog': 'Dog',
+    'horse': 'Horse',
+    'sheep': 'Sheep',
+    'cow': 'Cow',
+    'elephant': 'Elephant',
+    'bear': 'Bear',
+    'zebra': 'Zebra',
+    'giraffe': 'Giraffe',
+    'backpack': 'Backpack',
+    'umbrella': 'Umbrella',
+    'handbag': 'Handbag',
+    'tie': 'Tie',
+    'suitcase': 'Suitcase',
+    'frisbee': 'Frisbee',
+    'skis': 'Skis',
+    'snowboard': 'Snowboard',
+    'sports ball': 'Sports ball',
+    'kite': 'Kite',
+    'baseball bat': 'Baseball bat',
+    'baseball glove': 'Baseball glove',
+    'skateboard': 'Skateboard',
+    'surfboard': 'Surfboard',
+    'tennis racket': 'Tennis racket',
+    'bottle': 'Bottle',
+    'wine glass': 'Wine glass',
+    'cup': 'Cup',
+    'fork': 'Fork',
+    'knife': 'Knife',
+    'spoon': 'Spoon',
+    'bowl': 'Bowl',
+    'banana': 'Banana',
+    'apple': 'Apple',
+    'sandwich': 'Sandwich',
+    'orange': 'Orange',
+    'broccoli': 'Broccoli',
+    'carrot': 'Carrot',
+    'hot dog': 'Hot dog',
+    'pizza': 'Pizza',
+    'donut': 'Donut',
+    'cake': 'Cake',
+    'chair': 'Chair',
+    'couch': 'Couch',
+    'potted plant': 'Potted plant',
+    'bed': 'Bed',
+    'dining table': 'Dining table',
+    'toilet': 'Toilet',
+    'tv': 'Television',
+    'laptop': 'Laptop',
+    'mouse': 'Mouse',
+    'remote': 'Remote control',
+    'keyboard': 'Keyboard',
+    'cell phone': 'Mobile phone',
+    'microwave': 'Microwave',
+    'oven': 'Oven',
+    'toaster': 'Toaster',
+    'sink': 'Sink',
+    'refrigerator': 'Refrigerator',
+    'book': 'Book',
+    'clock': 'Clock',
+    'vase': 'Vase',
+    'scissors': 'Scissors',
+    'teddy bear': 'Teddy bear',
+    'hair drier': 'Hair dryer',
+    'toothbrush': 'Toothbrush',
+  };
 
   final DetectionService _deteksi = DetectionService();
   final LocationService _lokasiService = LocationService();
@@ -49,18 +131,31 @@ class _KameraScreenState extends State<KameraScreen> {
   bool _voiceAktif = true;
   bool _getarAktif = true;
   bool _ttsSiap = false;
-  bool _konfirmasiTerbuka = false; // true = perjalanan dijeda
+  bool _konfirmasiTerbuka = false;
   bool _sedangMengakhiri = false;
   bool _mendengarkan = false;
   bool _speechSiap = false;
-  String _statusSuara = _petunjukSuara;
+  bool _pengaturanSiap = false;
+
+  // Nilai harus sama dengan yang disimpan di Pengaturan.
+  String _bahasa = 'id-ID';
+  double _kecepatanSuara = 0.48;
+
+  String get _bahasaSpeech => _bahasa == 'en-US' ? 'en_US' : 'id_ID';
+
+  bool get _english => _bahasa == 'en-US';
+
+  String get _petunjukSuara => _english
+      ? 'Say “Yes, I have arrived” to end the journey.'
+      : 'Ucapkan “Ya, aku sudah sampai” untuk mengakhiri perjalanan.';
+
+  String _statusSuara = '';
 
   String _pesanNetra = 'Arahkan kamera ke lingkungan sekitar.';
   String _confidence = '';
   String _objekTerakhir = '';
   int _jumlahObjek = 0;
 
-  // Data rintangan yang terkumpul selama perjalanan.
   int _totalRintangan = 0;
   final Map<String, DateTime> _waktuRintangan = {};
   final Map<String, Position> _posisiRintangan = {};
@@ -92,6 +187,7 @@ class _KameraScreenState extends State<KameraScreen> {
     super.initState();
 
     _mulaiPerjalanan = DateTime.now();
+    _statusSuara = _petunjukSuara;
 
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -101,22 +197,55 @@ class _KameraScreenState extends State<KameraScreen> {
       });
     });
 
-    _siapkanSuara();
-    _siapkanPengenalanSuara();
+    _inisialisasi();
     _aktifkanGPS();
+  }
+
+  Future<void> _inisialisasi() async {
+    await _muatPengaturanBahasa();
+
+    if (!mounted) return;
+
+    await _siapkanSuara();
+    await _siapkanPengenalanSuara();
+  }
+
+  Future<void> _muatPengaturanBahasa() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final bahasaTersimpan = prefs.getString('netra_bahasa') ?? 'id-ID';
+      final kecepatanTersimpan =
+          prefs.getDouble('netra_kecepatan') ?? 0.5;
+
+      if (!mounted) return;
+
+      setState(() {
+        _bahasa = bahasaTersimpan == 'en-US' ? 'en-US' : 'id-ID';
+        _kecepatanSuara = kecepatanTersimpan.clamp(0.1, 1.0);
+        _statusSuara = _petunjukSuara;
+        _pengaturanSiap = true;
+      });
+    } catch (e) {
+      debugPrint('NETRA preferences: $e');
+      _pengaturanSiap = true;
+    }
   }
 
   Future<void> _siapkanSuara() async {
     try {
-      await _tts.setLanguage('id-ID');
-      await _tts.setSpeechRate(0.48);
+      await _tts.setLanguage(_bahasa);
+      await _tts.setSpeechRate(_kecepatanSuara);
       await _tts.setPitch(1.0);
       await _tts.setVolume(1.0);
       await _tts.awaitSpeakCompletion(false);
 
-      if (mounted) _ttsSiap = true;
+      if (mounted) {
+        _ttsSiap = true;
+      }
     } catch (e) {
       debugPrint('NETRA TTS: $e');
+      _ttsSiap = false;
     }
   }
 
@@ -125,21 +254,25 @@ class _KameraScreenState extends State<KameraScreen> {
       _speechSiap = await _speech.initialize(
         onStatus: (status) {
           if (!mounted || !_konfirmasiTerbuka) return;
+
           if (status == 'notListening' && _mendengarkan) {
             setState(() {
               _mendengarkan = false;
-              if (_statusSuara == 'Mendengarkan...') {
-                _statusSuara = 'Tekan untuk mencoba lagi';
-              }
+              _statusSuara = _english
+                  ? 'Tap to try again'
+                  : 'Tekan untuk mencoba lagi';
             });
           }
         },
         onError: (error) {
           debugPrint('NETRA speech: ${error.errorMsg}');
+
           if (mounted && _konfirmasiTerbuka) {
             setState(() {
               _mendengarkan = false;
-              _statusSuara = 'Suara belum dikenali. Coba lagi.';
+              _statusSuara = _english
+                  ? 'Voice not recognized. Please try again.'
+                  : 'Suara belum dikenali. Coba lagi.';
             });
           }
         },
@@ -196,29 +329,23 @@ class _KameraScreenState extends State<KameraScreen> {
   void _terimaPosisi(Position posisi) {
     if (!mounted) return;
 
-    // Penyaringan sederhana agar GPS yang meleset
-    // tidak langsung dihitung sebagai jarak berjalan.
     final akurasiLayak = posisi.accuracy.isFinite && posisi.accuracy <= 25;
 
     if (_posisiTerakhir != null && akurasiLayak) {
       final sebelumnya = _posisiTerakhir!;
-
       final jarak = _lokasiService.jarakMeter(sebelumnya, posisi);
-
       final selisihWaktu = posisi.timestamp.difference(sebelumnya.timestamp);
       final detik = selisihWaktu.inMilliseconds / 1000.0;
 
-      // Hanya menghitung gerakan yang cukup besar,
-      // masuk akal untuk berjalan, dan GPS cukup akurat.
       if (sebelumnya.accuracy <= 25 &&
           jarak >= 5 &&
           detik > 0 &&
           (jarak / detik) <= 3.0) {
         _jarakMeter += jarak;
         _posisiTerakhir = posisi;
-      } else if (jarak < 5) {
-        // Abaikan pergeseran kecil GPS.
-      } else if (jarak >= 5 && detik > 0 && (jarak / detik) <= 3.0) {
+      } else if (jarak >= 5 &&
+          detik > 0 &&
+          (jarak / detik) <= 3.0) {
         _posisiTerakhir = posisi;
       }
     } else if (_posisiTerakhir == null && akurasiLayak) {
@@ -275,7 +402,6 @@ class _KameraScreenState extends State<KameraScreen> {
     } catch (e) {
       debugPrint('NETRA geocoding: $e');
 
-      // Koordinat tetap ditampilkan jika alamat gagal.
       if (mounted && _posisiAlamat == null) {
         setState(() {
           _namaJalan = 'Lokasi GPS ditemukan';
@@ -287,6 +413,19 @@ class _KameraScreenState extends State<KameraScreen> {
     } finally {
       _mencariAlamat = false;
     }
+  }
+
+  String _namaObjek(String nama) {
+    final kelas = nama.toLowerCase();
+
+    if (_english) {
+      return _kelasRintanganEnglish[kelas] ??
+          _objekEnglish[kelas] ??
+          nama;
+    }
+
+    return _kelasRintanganIndonesia[kelas] ??
+        _namaIndonesia(nama);
   }
 
   String _namaIndonesia(String nama) {
@@ -301,17 +440,15 @@ class _KameraScreenState extends State<KameraScreen> {
       'potted plant': 'Tanaman',
     };
 
-    return tambahan[nama.toLowerCase()] ?? _deteksi.namaObjekIndonesia(nama);
+    return tambahan[nama.toLowerCase()] ??
+        _deteksi.namaObjekIndonesia(nama);
   }
 
-  // ---------------------------------------------------------------------------
-  // PENCATATAN RINTANGAN
-  // ---------------------------------------------------------------------------
-
-  /// Mencatat satu temuan rintangan. Rintangan yang sama yang terlihat terus
-  /// menerus hanya dihitung sekali: jenis sama baru dihitung lagi bila sudah
-  /// lewat 10 detik DAN lokasi pengguna bergeser minimal 5 meter.
-  void _catatRintangan(String kelas, String label, double confidence) {
+  void _catatRintangan(
+    String kelas,
+    String label,
+    double confidence,
+  ) {
     final sekarang = DateTime.now();
     final posisi = _posisiTerakhir;
 
@@ -331,15 +468,17 @@ class _KameraScreenState extends State<KameraScreen> {
     _waktuRintangan[kelas] = sekarang;
     if (posisi != null) _posisiRintangan[kelas] = posisi;
 
-    // Nama jalan untuk laporan.
     String jalan = _namaJalan;
-    if (jalan == 'Mencari lokasi...' || jalan == 'Lokasi belum tersedia') {
+
+    if (jalan == 'Mencari lokasi...' ||
+        jalan == 'Lokasi belum tersedia') {
       jalan = 'Lokasi tidak diketahui';
     } else if (jalan == 'Lokasi GPS ditemukan') {
-      jalan = _detailLokasi; // berisi koordinat
+      jalan = _detailLokasi;
     }
 
     _totalRintangan++;
+
     _daftarTemuan.add(
       TemuanRintangan(
         jenis: label,
@@ -353,27 +492,34 @@ class _KameraScreenState extends State<KameraScreen> {
   }
 
   void _prosesDeteksi(List<YOLOResult> results) {
-    // Saat perjalanan dijeda, abaikan seluruh hasil YOLO.
     if (!mounted || _konfirmasiTerbuka) return;
 
     final sekarang = DateTime.now();
 
-    final valid = results.where((hasil) => hasil.confidence >= 0.50).toList();
+    final valid = results
+        .where((hasil) => hasil.confidence >= 0.50)
+        .toList();
 
-    valid.sort((a, b) => b.confidence.compareTo(a.confidence));
+    valid.sort(
+      (a, b) => b.confidence.compareTo(a.confidence),
+    );
 
-    // Catat hanya objek yang termasuk daftar rintangan.
     for (final hasil in valid) {
       final kelas = hasil.className.toLowerCase();
-      final label = _kelasRintangan[kelas];
+
+      final label = _kelasRintanganIndonesia[kelas];
+
       if (label != null) {
-        _catatRintangan(kelas, label, hasil.confidence);
+        _catatRintangan(
+          kelas,
+          _english ? _kelasRintanganEnglish[kelas]! : label,
+          hasil.confidence,
+        );
       }
     }
 
-    // Suara tidak diulang terus pada setiap frame.
     if (valid.isNotEmpty && _voiceAktif && _ttsSiap) {
-      final nama = _namaIndonesia(valid.first.className);
+      final nama = _namaObjek(valid.first.className);
 
       final objekBerubah = nama != _objekDiucapkan;
       final jeda = objekBerubah ? 8 : 18;
@@ -396,19 +542,23 @@ class _KameraScreenState extends State<KameraScreen> {
         _objekTerakhir = '';
         _confidence = '';
         _jumlahObjek = 0;
-        _pesanNetra = 'Belum ada objek terdeteksi.';
+        _pesanNetra = _english
+            ? 'No objects detected yet.'
+            : 'Belum ada objek terdeteksi.';
       });
       return;
     }
 
     final utama = valid.first;
-    final nama = _namaIndonesia(utama.className);
+    final nama = _namaObjek(utama.className);
 
     setState(() {
       _objekTerakhir = nama;
       _confidence = '${(utama.confidence * 100).toStringAsFixed(1)}%';
       _jumlahObjek = valid.length;
-      _pesanNetra = 'Terdeteksi $nama di area kamera.';
+      _pesanNetra = _english
+          ? '$nama detected in the camera view.'
+          : 'Terdeteksi $nama di area kamera.';
     });
   }
 
@@ -420,7 +570,11 @@ class _KameraScreenState extends State<KameraScreen> {
 
       if (!_voiceAktif || !mounted) return;
 
-      await _tts.speak('NETRA mendeteksi $nama.');
+      final kalimat = _english
+          ? 'NETRA detected $nama.'
+          : 'NETRA mendeteksi $nama.';
+
+      await _tts.speak(kalimat);
 
       if (_getarAktif && mounted) {
         if (await Vibration.hasVibrator() == true) {
@@ -472,19 +626,17 @@ class _KameraScreenState extends State<KameraScreen> {
       return '${(_jarakMeter / 1000).toStringAsFixed(2)} km';
     }
 
-    return '${_jarakMeter.toStringAsFixed(0)} meter';
+    return _english
+        ? '${_jarakMeter.toStringAsFixed(0)} meters'
+        : '${_jarakMeter.toStringAsFixed(0)} meter';
   }
-
-  // ---------------------------------------------------------------------------
-  // ALUR JEDA / KONFIRMASI AKHIRI PERJALANAN
-  // ---------------------------------------------------------------------------
 
   Future<void> _akhiriPerjalanan() async {
     if (_konfirmasiTerbuka) return;
 
-    // Jeda: hentikan suara deteksi dan bekukan hasil deteksi.
     await _tts.stop();
     await _speech.stop();
+
     if (!mounted) return;
 
     setState(() {
@@ -496,22 +648,24 @@ class _KameraScreenState extends State<KameraScreen> {
     _ucapkanKonfirmasi();
   }
 
-  /// Membacakan pertanyaan konfirmasi, lalu otomatis menyalakan mikrofon.
   Future<void> _ucapkanKonfirmasi() async {
     if (!_ttsSiap) return;
 
     try {
-      // Tunggu sampai kalimat selesai diucapkan.
       await _tts.awaitSpeakCompletion(true);
+
       await _tts.speak(
-        'Apakah Anda ingin mengakhiri perjalanan? Ucapkan iya atau tidak.',
+        _english
+            ? 'Would you like to end the journey? Please say yes or no.'
+            : 'Apakah Anda ingin mengakhiri perjalanan? Ucapkan iya atau tidak.',
       );
+
       await _tts.awaitSpeakCompletion(false);
 
-      // Kalau pengguna sudah memilih saat TTS berbicara, jangan nyalakan mic.
       if (!mounted || !_konfirmasiTerbuka || _mendengarkan) return;
 
       await Future.delayed(const Duration(milliseconds: 300));
+
       if (mounted && _konfirmasiTerbuka && !_mendengarkan) {
         _tekanUntukBerbicara();
       }
@@ -523,6 +677,7 @@ class _KameraScreenState extends State<KameraScreen> {
   Future<void> _lanjutkanPerjalanan() async {
     await _tts.stop();
     await _speech.stop();
+
     if (!mounted) return;
 
     setState(() {
@@ -535,21 +690,21 @@ class _KameraScreenState extends State<KameraScreen> {
   }
 
   Future<void> _selesaikanPerjalanan() async {
-    if (_sedangMengakhiri) return; // cegah terpanggil 2x (tombol + suara)
+    if (_sedangMengakhiri) return;
+
     _sedangMengakhiri = true;
 
     await _speech.stop();
 
     _voiceAktif = false;
     await _tts.stop();
+
     _timer?.cancel();
     await _langgananGPS?.cancel();
     _langgananGPS = null;
 
     if (!mounted) return;
 
-    // pushReplacement: layar kamera diganti halaman laporan,
-    // jadi saat laporan ditutup, rute di bawahnya adalah beranda.
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => LaporanPerjalananScreen(
@@ -560,6 +715,10 @@ class _KameraScreenState extends State<KameraScreen> {
   }
 
   Future<void> _tekanUntukBerbicara() async {
+    if (!_pengaturanSiap) {
+      await _muatPengaturanBahasa();
+    }
+
     if (!_speechSiap) {
       await _siapkanPengenalanSuara();
     }
@@ -568,61 +727,81 @@ class _KameraScreenState extends State<KameraScreen> {
 
     if (!_speechSiap) {
       setState(() {
-        _statusSuara =
-            'Pengenalan suara tidak tersedia. Gunakan tombol di atas.';
+        _statusSuara = _english
+            ? 'Speech recognition is unavailable. Use the buttons above.'
+            : 'Pengenalan suara tidak tersedia. Gunakan tombol di atas.';
       });
       return;
     }
 
     if (_mendengarkan) {
       await _speech.stop();
+
       if (!mounted) return;
+
       setState(() {
         _mendengarkan = false;
         _statusSuara = _petunjukSuara;
       });
+
       return;
     }
 
     await _tts.stop();
+
     if (!mounted) return;
 
     setState(() {
       _mendengarkan = true;
-      _statusSuara = 'Mendengarkan...';
+      _statusSuara = _english ? 'Listening...' : 'Mendengarkan...';
     });
 
     await _speech.listen(
-      localeId: 'id_ID',
+      localeId: _bahasaSpeech,
       listenFor: const Duration(seconds: 8),
       pauseFor: const Duration(seconds: 3),
       onResult: (result) async {
         if (!mounted || !_konfirmasiTerbuka) return;
 
         final kata = result.recognizedWords.toLowerCase().trim();
+
         if (kata.isEmpty) return;
 
-        setState(() => _statusSuara = 'Terdengar: $kata');
+        setState(() {
+          _statusSuara = _english
+              ? 'Heard: $kata'
+              : 'Terdengar: $kata';
+        });
 
         if (!result.finalResult) return;
 
-        // "Tidak" dicek lebih dulu supaya kalimat seperti
-        // "tidak mau mengakhiri" tidak terbaca sebagai "iya".
-        final tidak =
-            kata.contains('tidak') ||
-            kata.contains('enggak') ||
-            kata.contains('engga') ||
-            kata.contains('nggak') ||
-            kata.contains('lanjut');
+        // Perintah penolakan diperiksa terlebih dahulu.
+        final tidak = _english
+            ? kata == 'no' ||
+                kata.contains('no ') ||
+                kata.contains('do not') ||
+                kata.contains("don't") ||
+                kata.contains('continue') ||
+                kata.contains('keep going')
+            : kata.contains('tidak') ||
+                kata.contains('enggak') ||
+                kata.contains('engga') ||
+                kata.contains('nggak') ||
+                kata.contains('lanjut');
 
-        final iya =
-            kata == 'iya' ||
-            kata == 'ya' ||
-            kata.startsWith('iya ') ||
-            kata.startsWith('ya ') ||
-            kata.contains('sudah sampai') ||
-            kata.contains('akhiri') ||
-            kata.contains('mengakhiri');
+        final iya = _english
+            ? kata == 'yes' ||
+                kata.startsWith('yes ') ||
+                kata.contains('end the journey') ||
+                kata.contains('finish the journey') ||
+                kata.contains('i have arrived')
+            : kata == 'iya' ||
+                kata == 'ya' ||
+                kata.startsWith('iya ') ||
+                kata.startsWith('ya ') ||
+                kata.contains('sudah sampai') ||
+                kata.contains('akhiri') ||
+                kata.contains('mengakhiri');
 
         if (tidak) {
           await _lanjutkanPerjalanan();
@@ -631,7 +810,9 @@ class _KameraScreenState extends State<KameraScreen> {
         } else {
           setState(() {
             _mendengarkan = false;
-            _statusSuara = 'Ucapkan “Iya” atau “Tidak”';
+            _statusSuara = _english
+                ? 'Please say “Yes” or “No”.'
+                : 'Ucapkan “Iya” atau “Tidak”.';
           });
         }
       },
@@ -648,10 +829,6 @@ class _KameraScreenState extends State<KameraScreen> {
     super.dispose();
   }
 
-  // ---------------------------------------------------------------------------
-  // BUILD
-  // ---------------------------------------------------------------------------
-
   @override
   Widget build(BuildContext context) {
     final jeda = _konfirmasiTerbuka;
@@ -665,7 +842,6 @@ class _KameraScreenState extends State<KameraScreen> {
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
               child: Column(
                 children: [
-                  // STATUS DAN PENGATURAN
                   Row(
                     children: [
                       Container(
@@ -689,7 +865,13 @@ class _KameraScreenState extends State<KameraScreen> {
                             ),
                             const SizedBox(width: 5),
                             Text(
-                              jeda ? 'Perjalanan Dijeda' : 'Perjalanan Aktif',
+                              jeda
+                                  ? (_english
+                                      ? 'Journey Paused'
+                                      : 'Perjalanan Dijeda')
+                                  : (_english
+                                      ? 'Journey Active'
+                                      : 'Perjalanan Aktif'),
                               style: GoogleFonts.poppins(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
@@ -710,16 +892,13 @@ class _KameraScreenState extends State<KameraScreen> {
                       const SizedBox(width: 6),
                       _chipToggle(
                         icon: Icons.vibration,
-                        teks: 'Getar',
+                        teks: _english ? 'Vibrate' : 'Getar',
                         aktif: _getarAktif,
                         ditekan: _ubahGetar,
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 10),
-
-                  // KAMERA YOLO
                   Expanded(
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(13),
@@ -731,9 +910,7 @@ class _KameraScreenState extends State<KameraScreen> {
                               onResult: _prosesDeteksi,
                             ),
                           ),
-
                           if (jeda) ...[
-                            // LAPISAN GELAP SAAT DIJEDA
                             Positioned.fill(
                               child: IgnorePointer(
                                 child: Container(
@@ -741,8 +918,6 @@ class _KameraScreenState extends State<KameraScreen> {
                                 ),
                               ),
                             ),
-
-                            // PIL "KAMERA DETEKSI DIJEDA"
                             Center(
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
@@ -771,7 +946,9 @@ class _KameraScreenState extends State<KameraScreen> {
                                     ),
                                     const SizedBox(width: 7),
                                     Text(
-                                      'Kamera Deteksi Dijeda',
+                                      _english
+                                          ? 'Camera Detection Paused'
+                                          : 'Kamera Deteksi Dijeda',
                                       style: GoogleFonts.plusJakartaSans(
                                         color: Colors.white,
                                         fontSize: 11,
@@ -783,7 +960,6 @@ class _KameraScreenState extends State<KameraScreen> {
                               ),
                             ),
                           ] else ...[
-                            // BANNER SUARA
                             Positioned(
                               left: 10,
                               right: 10,
@@ -810,8 +986,12 @@ class _KameraScreenState extends State<KameraScreen> {
                                         children: [
                                           Text(
                                             _voiceAktif
-                                                ? 'SUARA NETRA'
-                                                : 'SUARA DINONAKTIFKAN',
+                                                ? (_english
+                                                    ? 'NETRA VOICE'
+                                                    : 'SUARA NETRA')
+                                                : (_english
+                                                    ? 'VOICE DISABLED'
+                                                    : 'SUARA DINONAKTIFKAN'),
                                             style: GoogleFonts.poppins(
                                               color: const Color(0xFF4ADE80),
                                               fontSize: 10,
@@ -841,8 +1021,6 @@ class _KameraScreenState extends State<KameraScreen> {
                                 ),
                               ),
                             ),
-
-                            // INFORMASI KAMERA
                             Positioned(
                               left: 10,
                               right: 10,
@@ -864,8 +1042,12 @@ class _KameraScreenState extends State<KameraScreen> {
                                     Expanded(
                                       child: Text(
                                         _jumlahObjek == 0
-                                            ? 'Kamera AI aktif. Arahkan ke depan.'
-                                            : '$_jumlahObjek objek terdeteksi oleh AI.',
+                                            ? (_english
+                                                ? 'AI camera is active. Point it forward.'
+                                                : 'Kamera AI aktif. Arahkan ke depan.')
+                                            : (_english
+                                                ? '$_jumlahObjek objects detected by AI.'
+                                                : '$_jumlahObjek objek terdeteksi oleh AI.'),
                                         style: GoogleFonts.poppins(
                                           color: Colors.white,
                                           fontSize: 10,
@@ -881,11 +1063,8 @@ class _KameraScreenState extends State<KameraScreen> {
                       ),
                     ),
                   ),
-
                   if (!jeda) ...[
                     const SizedBox(height: 10),
-
-                    // KARTU LOKASI ASLI
                     InkWell(
                       onTap: () {
                         if (_kesalahanLokasi != null) {
@@ -921,7 +1100,9 @@ class _KameraScreenState extends State<KameraScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'LOKASI SEKARANG',
+                                    _english
+                                        ? 'CURRENT LOCATION'
+                                        : 'LOKASI SEKARANG',
                                     style: GoogleFonts.poppins(
                                       fontSize: 9,
                                       color: const Color(0xFF8290A5),
@@ -961,16 +1142,13 @@ class _KameraScreenState extends State<KameraScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 9),
-
-                    // JARAK DAN DURASI
                     Row(
                       children: [
                         Expanded(
                           child: _kartuStatistik(
                             ikon: Icons.route_outlined,
-                            judul: 'Jarak Tempuh',
+                            judul: _english ? 'Distance' : 'Jarak Tempuh',
                             nilai: _jarakTeks,
                             warna: const Color(0xFF526079),
                           ),
@@ -979,17 +1157,16 @@ class _KameraScreenState extends State<KameraScreen> {
                         Expanded(
                           child: _kartuStatistik(
                             ikon: Icons.timer_outlined,
-                            judul: 'Durasi Navigasi',
+                            judul: _english
+                                ? 'Journey Duration'
+                                : 'Durasi Navigasi',
                             nilai: _durasiTeks,
                             warna: const Color(0xFF16A34A),
                           ),
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 10),
-
-                    // AKHIRI PERJALANAN
                     SizedBox(
                       width: double.infinity,
                       height: 51,
@@ -1002,9 +1179,12 @@ class _KameraScreenState extends State<KameraScreen> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        icon: const Icon(Icons.stop_circle_outlined, size: 19),
+                        icon: const Icon(
+                          Icons.stop_circle_outlined,
+                          size: 19,
+                        ),
                         label: Text(
-                          'Akhiri Perjalanan',
+                          _english ? 'End Journey' : 'Akhiri Perjalanan',
                           style: GoogleFonts.poppins(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -1017,8 +1197,6 @@ class _KameraScreenState extends State<KameraScreen> {
                 ],
               ),
             ),
-
-            // KARTU KONFIRMASI (melayang di atas kamera, tepat di atas tombol)
             if (jeda)
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
@@ -1043,10 +1221,6 @@ class _KameraScreenState extends State<KameraScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // KOMPONEN KONFIRMASI
-  // ---------------------------------------------------------------------------
-
   Widget _kartuKonfirmasi() {
     return Container(
       width: double.infinity,
@@ -1065,7 +1239,6 @@ class _KameraScreenState extends State<KameraScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // IKON TANDA TANYA
           Container(
             width: 58,
             height: 58,
@@ -1093,12 +1266,12 @@ class _KameraScreenState extends State<KameraScreen> {
               ),
             ),
           ),
-
           const SizedBox(height: 12),
-
-          // CHIP SUARA AKTIF
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: 4,
+            ),
             decoration: BoxDecoration(
               color: const Color(0xFFE4E9FF),
               borderRadius: BorderRadius.circular(20),
@@ -1113,7 +1286,7 @@ class _KameraScreenState extends State<KameraScreen> {
                 ),
                 const SizedBox(width: 5),
                 Text(
-                  'Suara Aktif',
+                  _english ? 'Voice Active' : 'Suara Aktif',
                   style: GoogleFonts.plusJakartaSans(
                     color: const Color(0xFF2149B8),
                     fontSize: 10,
@@ -1123,12 +1296,11 @@ class _KameraScreenState extends State<KameraScreen> {
               ],
             ),
           ),
-
           const SizedBox(height: 14),
-
-          // JUDUL
           Text(
-            'Apakah Anda ingin mengakhiri perjalanan?',
+            _english
+                ? 'Would you like to end the journey?'
+                : 'Apakah Anda ingin mengakhiri perjalanan?',
             textAlign: TextAlign.center,
             style: GoogleFonts.plusJakartaSans(
               fontSize: 20,
@@ -1137,12 +1309,11 @@ class _KameraScreenState extends State<KameraScreen> {
               color: const Color(0xFF14171F),
             ),
           ),
-
           const SizedBox(height: 10),
-
-          // DESKRIPSI
           Text(
-            'Sistem akan merangkum seluruh temuan rintangan aksesibilitas yang terdeteksi selama perjalanan ini untuk laporan Dinas Sosial Kota Surabaya.',
+            _english
+                ? 'The system will summarize all accessibility obstacles detected during this journey for the Surabaya City Social Services report.'
+                : 'Sistem akan merangkum seluruh temuan rintangan aksesibilitas yang terdeteksi selama perjalanan ini untuk laporan Dinas Sosial Kota Surabaya.',
             textAlign: TextAlign.center,
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11.5,
@@ -1150,10 +1321,7 @@ class _KameraScreenState extends State<KameraScreen> {
               color: const Color(0xFF5F6675),
             ),
           ),
-
           const SizedBox(height: 16),
-
-          // DATA TERKUMPUL
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(10),
@@ -1182,7 +1350,7 @@ class _KameraScreenState extends State<KameraScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Data Terkumpul',
+                        _english ? 'Collected Data' : 'Data Terkumpul',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
@@ -1191,7 +1359,9 @@ class _KameraScreenState extends State<KameraScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '$_totalRintangan Rintangan',
+                        _english
+                            ? '$_totalRintangan Obstacles'
+                            : '$_totalRintangan Rintangan',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 10.5,
                           color: const Color(0xFF5F6675),
@@ -1214,7 +1384,6 @@ class _KameraScreenState extends State<KameraScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // YA, AKHIRI
           SizedBox(
             width: double.infinity,
             height: 48,
@@ -1222,7 +1391,7 @@ class _KameraScreenState extends State<KameraScreen> {
               onPressed: _selesaikanPerjalanan,
               icon: const Icon(Icons.stop_circle_outlined, size: 20),
               label: Text(
-                'Ya, Akhiri',
+                _english ? 'Yes, End Journey' : 'Ya, Akhiri',
                 style: GoogleFonts.plusJakartaSans(
                   fontWeight: FontWeight.w800,
                   fontSize: 13,
@@ -1238,10 +1407,7 @@ class _KameraScreenState extends State<KameraScreen> {
               ),
             ),
           ),
-
           const SizedBox(height: 10),
-
-          // TIDAK, LANJUTKAN
           SizedBox(
             width: double.infinity,
             height: 46,
@@ -1249,7 +1415,7 @@ class _KameraScreenState extends State<KameraScreen> {
               onPressed: _lanjutkanPerjalanan,
               icon: const Icon(Icons.play_arrow_outlined, size: 20),
               label: Text(
-                'Tidak, Lanjutkan',
+                _english ? 'No, Continue' : 'Tidak, Lanjutkan',
                 style: GoogleFonts.plusJakartaSans(
                   fontWeight: FontWeight.w800,
                   fontSize: 13,
@@ -1265,10 +1431,7 @@ class _KameraScreenState extends State<KameraScreen> {
               ),
             ),
           ),
-
           const SizedBox(height: 10),
-
-          // PANEL TEKAN UNTUK BERBICARA
           GestureDetector(
             onTap: _tekanUntukBerbicara,
             child: Container(
@@ -1302,8 +1465,12 @@ class _KameraScreenState extends State<KameraScreen> {
                       children: [
                         Text(
                           _mendengarkan
-                              ? 'SEDANG MENDENGARKAN'
-                              : 'TEKAN UNTUK BERBICARA',
+                              ? (_english
+                                  ? 'LISTENING'
+                                  : 'SEDANG MENDENGARKAN')
+                              : (_english
+                                  ? 'TAP TO SPEAK'
+                                  : 'TEKAN UNTUK BERBICARA'),
                           style: GoogleFonts.plusJakartaSans(
                             color: const Color(0xFF9DB7FF),
                             fontSize: 9.5,
@@ -1333,10 +1500,6 @@ class _KameraScreenState extends State<KameraScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // KOMPONEN UMUM
-  // ---------------------------------------------------------------------------
-
   Widget _chipToggle({
     required IconData icon,
     required String teks,
@@ -1358,7 +1521,9 @@ class _KameraScreenState extends State<KameraScreen> {
             Icon(
               icon,
               size: 13,
-              color: aktif ? const Color(0xFF334155) : const Color(0xFF94A3B8),
+              color: aktif
+                  ? const Color(0xFF334155)
+                  : const Color(0xFF94A3B8),
             ),
             const SizedBox(width: 4),
             Text(

@@ -1,5 +1,7 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 
@@ -83,14 +85,16 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pengaturan berhasil disimpan.')),
+        const SnackBar(
+          content: Text('Pengaturan berhasil disimpan.'),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Gagal menyimpan pengaturan: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal menyimpan pengaturan: $e')),
+      );
     } finally {
       if (mounted) {
         setState(() => _sedangMenyimpan = false);
@@ -125,14 +129,24 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
         if (!mounted) return;
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Perangkat tidak mendukung getaran.')),
+          const SnackBar(
+            content: Text('Perangkat tidak mendukung getaran.'),
+          ),
         );
         return;
       }
 
-      const durasi = <int, int>{1: 150, 2: 300, 3: 500};
+      const durasi = <int, int>{
+        1: 150,
+        2: 300,
+        3: 500,
+      };
 
-      const amplitudo = <int, int>{1: 80, 2: 160, 3: 255};
+      const amplitudo = <int, int>{
+        1: 80,
+        2: 160,
+        3: 255,
+      };
 
       await Vibration.vibrate(
         duration: durasi[_intensitasGetaran] ?? 300,
@@ -149,167 +163,190 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
-      appBar: AppBar(
-        toolbarHeight: 56,
-        title: const Text(
-          'Pengaturan Suara & Haptik',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
-        backgroundColor: const Color(0xFFF7F8FA),
-        foregroundColor: const Color(0xFF253047),
-        elevation: 0,
+    final temaPoppins = Theme.of(context).copyWith(
+      textTheme: GoogleFonts.poppinsTextTheme(
+        Theme.of(context).textTheme,
       ),
-      body: _sedangMemuat
-          ? const Center(child: CircularProgressIndicator())
-          : SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(18, 10, 18, 16),
-                child: Column(
-                  children: [
-                    _bagian(
-                      judul: 'Bahasa Suara',
-                      deskripsi: 'Pilih bahasa suara NETRA.',
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _bahasa,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'id-ID',
-                            child: Text('Bahasa Indonesia'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'en-US',
-                            child: Text('English'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() => _bahasa = value);
-                          }
-                        },
-                      ),
-                    ),
+      primaryTextTheme: GoogleFonts.poppinsTextTheme(
+        Theme.of(context).primaryTextTheme,
+      ),
+    );
 
-                    const SizedBox(height: 12),
-
-                    _bagian(
-                      judul: 'Kecepatan Suara',
-                      deskripsi: 'Atur kecepatan bicara NETRA.',
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Lambat'),
-                              Text('${(_kecepatan * 100).round()}%'),
-                              const Text('Cepat'),
-                            ],
-                          ),
-                          Slider(
-                            value: _kecepatan,
-                            min: 0.1,
-                            max: 1.0,
-                            divisions: 9,
-                            onChanged: (value) {
-                              setState(() => _kecepatan = value);
-                            },
-                          ),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 42,
-                            child: OutlinedButton.icon(
-                              onPressed: _ujiSuara,
-                              icon: const Icon(
-                                Icons.volume_up_outlined,
-                                size: 19,
-                              ),
-                              label: const Text('Uji Suara'),
+    return Theme(
+      data: temaPoppins,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF7F8FA),
+        appBar: AppBar(
+          toolbarHeight: 56,
+          title: const Text(
+            'Pengaturan Suara & Haptik',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          backgroundColor: const Color(0xFFF7F8FA),
+          foregroundColor: const Color(0xFF253047),
+          elevation: 0,
+        ),
+        body: _sedangMemuat
+            ? const Center(child: CircularProgressIndicator())
+            : SafeArea(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 16),
+                  child: Column(
+                    children: [
+                      _bagian(
+                        judul: 'Bahasa Suara',
+                        deskripsi: 'Pilih bahasa suara NETRA.',
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _bahasa,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
                             ),
                           ),
-                        ],
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'id-ID',
+                              child: Text('Bahasa Indonesia'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'en-US',
+                              child: Text('English'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() => _bahasa = value);
+                            }
+                          },
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 12),
 
-                    _bagian(
-                      judul: 'Intensitas Getaran',
-                      deskripsi: 'Atur kekuatan getaran peringatan.',
-                      child: Column(
-                        children: [
-                          RadioGroup<int>(
-                            groupValue: _intensitasGetaran,
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() => _intensitasGetaran = value);
-                              }
-                            },
-                            child: Column(
+                      _bagian(
+                        judul: 'Kecepatan Suara',
+                        deskripsi: 'Atur kecepatan bicara NETRA.',
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
                               children: [
-                                _pilihanGetaran(1, 'Rendah'),
-                                _pilihanGetaran(2, 'Sedang'),
-                                _pilihanGetaran(3, 'Tinggi'),
+                                const Text('Lambat'),
+                                Text('${(_kecepatan * 100).round()}%'),
+                                const Text('Cepat'),
                               ],
                             ),
-                          ),
-                          const SizedBox(height: 6),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 42,
-                            child: OutlinedButton.icon(
-                              onPressed: _ujiGetaran,
-                              icon: const Icon(Icons.vibration, size: 19),
-                              label: const Text('Uji Getaran'),
+                            Slider(
+                              value: _kecepatan,
+                              min: 0.1,
+                              max: 1.0,
+                              divisions: 9,
+                              onChanged: (value) {
+                                setState(() => _kecepatan = value);
+                              },
                             ),
-                          ),
-                        ],
+                            SizedBox(
+                              width: double.infinity,
+                              height: 42,
+                              child: OutlinedButton.icon(
+                                onPressed: _ujiSuara,
+                                icon: const Icon(
+                                  Icons.volume_up_outlined,
+                                  size: 19,
+                                ),
+                                label: const Text('Uji Suara'),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+
+                      const SizedBox(height: 12),
+
+                      _bagian(
+                        judul: 'Intensitas Getaran',
+                        deskripsi: 'Atur kekuatan getaran peringatan.',
+                        child: Column(
+                          children: [
+                            RadioGroup<int>(
+                              groupValue: _intensitasGetaran,
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setState(
+                                    () => _intensitasGetaran = value,
+                                  );
+                                }
+                              },
+                              child: Column(
+                                children: [
+                                  _pilihanGetaran(1, 'Rendah'),
+                                  _pilihanGetaran(2, 'Sedang'),
+                                  _pilihanGetaran(3, 'Tinggi'),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 42,
+                              child: OutlinedButton.icon(
+                                onPressed: _ujiGetaran,
+                                icon: const Icon(
+                                  Icons.vibration,
+                                  size: 19,
+                                ),
+                                label: const Text('Uji Getaran'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
-          child: SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: _sedangMemuat || _sedangMenyimpan
-                  ? null
-                  : _simpanPengaturan,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2455E8),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
+            child: SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                onPressed: _sedangMemuat || _sedangMenyimpan
+                    ? null
+                    : _simpanPengaturan,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2455E8),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
-              ),
-              icon: _sedangMenyimpan
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.save_outlined),
-              label: Text(
-                _sedangMenyimpan ? 'Menyimpan...' : 'Simpan Pengaturan',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+                icon: _sedangMenyimpan
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.save_outlined),
+                label: Text(
+                  _sedangMenyimpan
+                      ? 'Menyimpan...'
+                      : 'Simpan Pengaturan',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
@@ -322,9 +359,15 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
   Widget _pilihanGetaran(int nilai, String label) {
     return RadioListTile<int>(
       contentPadding: EdgeInsets.zero,
-      visualDensity: const VisualDensity(horizontal: -1, vertical: -2),
+      visualDensity: const VisualDensity(
+        horizontal: -1,
+        vertical: -2,
+      ),
       dense: true,
-      title: Text(label, style: const TextStyle(fontSize: 14)),
+      title: Text(
+        label,
+        style: const TextStyle(fontSize: 14),
+      ),
       value: nilai,
     );
   }
@@ -355,7 +398,10 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
           const SizedBox(height: 4),
           Text(
             deskripsi,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF758195)),
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF758195),
+            ),
           ),
           const SizedBox(height: 10),
           child,
@@ -363,4 +409,4 @@ class _PengaturanScreenState extends State<PengaturanScreen> {
       ),
     );
   }
-} // penutup fungsi _bagian
+}
