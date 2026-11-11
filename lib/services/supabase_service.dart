@@ -1,4 +1,3 @@
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseService {
@@ -53,5 +52,66 @@ class SupabaseService {
         'getaran_bahaya': true,
       });
     }
+  }
+
+  // ==========================================
+  // STATISTIK & DATA TEMUAN (Feature 8.b)
+  // ==========================================
+
+  /// Ambil statistik temuan: total, terverifikasi, belum diverkezi.
+  static Future<Map<String, int>> hitungStatistikTemuan() async {
+    // Menggunakan .select() biasa lalu menghitung length dari hasilnya.
+    // Untuk tabel besar, pastikan indeks di Supabase (status, waktu) untuk performa.
+    final totalRespon = await client.from('temuan').select('id');
+    final verifiedRespon = await client
+        .from('temuan')
+        .select('id')
+        .eq('status', 'terverifikasi');
+    final unverifiedRespon = await client
+        .from('temuan')
+        .select('id')
+        .eq('status', 'belum_diverifikasi');
+
+    int total = 0, terverifikasi = 0, belumDiverifikasi = 0;
+
+    // Ekstraksi length dari list yang dikembalikan
+    if (totalRespon is List) {
+      total = totalRespon.length;
+    }
+    if (verifiedRespon is List) {
+      terverifikasi = verifiedRespon.length;
+    }
+    if (unverifiedRespon is List) {
+      belumDiverifikasi = unverifiedRespon.length;
+    }
+
+    return {
+      'total': total,
+      'terverifikasi': terverifikasi,
+      'belum_diverifikasi': belumDiverifikasi,
+    };
+  }
+
+  /// Ambil daftar temuan terbaru (default 5 data).
+  static Future<List<Map<String, dynamic>>> ambilTemuanTerbaru({
+    int limit = 5,
+  }) async {
+    final respon = await client
+        .from('temuan')
+        .select('id, jenis, status, waktu, lokasi')
+        .order('waktu', ascending: false)
+        .limit(limit);
+
+    return List<Map<String, dynamic>>.from(respon);
+  }
+
+  /// Ambil semua temuan (untuk daftar lengkap admin).
+  static Future<List<Map<String, dynamic>>> ambilSemuaTemuan() async {
+    final respon = await client
+        .from('temuan')
+        .select('id, jenis, status, waktu, lokasi, latitude, longitude')
+        .order('waktu', ascending: false);
+
+    return List<Map<String, dynamic>>.from(respon);
   }
 }

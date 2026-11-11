@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/supabase_service.dart';
+import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -90,13 +91,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final namaAdmin = (admin['nama'] as String?) ?? 'Petugas Dinsos';
 
-      // 3. Buka dashboard.
-      // TODO: ganti _DashboardSementara dengan DashboardScreen
-      // dari dashboard_screen.dart jika sudah selesai dikerjakan.
+      // 3. Buka dashboard asli.
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => _DashboardSementara(namaAdmin: namaAdmin),
+          builder: (context) => const DashboardScreen(),
         ),
       );
     } on AuthException catch (e) {
@@ -497,72 +496,3 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ========================================
-// DASHBOARD SEMENTARA (HAPUS JIKA DASHBOARD ASLI SUDAH ADA)
-// ========================================
-
-class _DashboardSementara extends StatelessWidget {
-  final String namaAdmin;
-
-  const _DashboardSementara({required this.namaAdmin});
-
-  Future<void> _keluar(BuildContext context) async {
-    final navigator = Navigator.of(context);
-
-    try {
-      await SupabaseService.client.auth.signOut();
-      await SupabaseService.siapkanPengguna();
-    } catch (e) {
-      debugPrint('Gagal keluar: $e');
-    }
-
-    navigator.popUntil((route) => route.isFirst);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Dashboard Admin (Sementara)',
-          style: GoogleFonts.poppins(fontSize: 16),
-        ),
-        automaticallyImplyLeading: false,
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.check_circle_outline,
-                size: 64,
-                color: Color(0xFF16A34A),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Login berhasil',
-                style: GoogleFonts.poppins(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Halo, $namaAdmin',
-                style: GoogleFonts.poppins(fontSize: 14),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: () => _keluar(context),
-                icon: const Icon(Icons.logout),
-                label: const Text('Keluar'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
