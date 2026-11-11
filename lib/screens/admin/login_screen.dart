@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/supabase_service.dart';
@@ -58,11 +59,13 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // 1. Login lewat Supabase Auth
-      final respon = await SupabaseService.client.auth.signInWithPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
+      // 1. Login lewat Supabase Auth (dengan batas waktu agar tidak menggantung)
+      final respon = await SupabaseService.client.auth
+          .signInWithPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text,
+          )
+          .timeout(const Duration(seconds: 15));
 
       final user = respon.user;
       if (user == null) {
@@ -74,7 +77,8 @@ class _LoginScreenState extends State<LoginScreen> {
           .from('admin_dinsos')
           .select('id_admin, nama')
           .eq('auth_user_id', user.id)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(const Duration(seconds: 15));
 
       if (admin == null) {
         await _kembalikanSesiPengguna();
@@ -87,15 +91,23 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      if (!mounted) return;
-
       final namaAdmin = (admin['nama'] as String?) ?? 'Petugas Dinsos';
 
-      // 3. Buka dashboard asli.
+      // Simpan nama ke cache supaya dashboard bisa menampilkannya langsung.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('admin_nama', namaAdmin);
+      } catch (e) {
+        debugPrint('Gagal menyimpan nama admin: $e');
+      }
+
+      if (!mounted) return;
+
+      // 3. Buka dashboard.
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => const DashboardScreen(),
+          builder: (context) => DashboardScreen(namaAdmin: namaAdmin),
         ),
       );
     } on AuthException catch (e) {
@@ -116,6 +128,7 @@ class _LoginScreenState extends State<LoginScreen> {
             'Gagal memverifikasi akun petugas. Coba lagi atau hubungi administrator.';
       });
     } catch (e) {
+      // Termasuk TimeoutException dan gangguan jaringan.
       debugPrint('Error login: $e');
       await _kembalikanSesiPengguna();
 
@@ -239,8 +252,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF1D4ED8)
-                                .withValues(alpha: 0.08),
+                            color: const Color(
+                              0xFF1D4ED8,
+                            ).withValues(alpha: 0.08),
                             blurRadius: 24,
                             offset: const Offset(0, 8),
                           ),
@@ -330,27 +344,28 @@ class _LoginScreenState extends State<LoginScreen> {
                               enabled: !_sedangMasuk,
                               onFieldSubmitted: (_) => _masuk(),
                               style: GoogleFonts.poppins(fontSize: 14),
-                              decoration: _inputDecoration(
-                                'Masukkan kata sandi',
-                              ).copyWith(
-                                suffixIcon: IconButton(
-                                  tooltip: _sembunyikanSandi
-                                      ? 'Tampilkan kata sandi'
-                                      : 'Sembunyikan kata sandi',
-                                  onPressed: () {
-                                    setState(() {
-                                      _sembunyikanSandi =
-                                          !_sembunyikanSandi;
-                                    });
-                                  },
-                                  icon: Icon(
-                                    _sembunyikanSandi
-                                        ? Icons.visibility_off_outlined
-                                        : Icons.visibility_outlined,
-                                    color: const Color(0xFF64748B),
+                              decoration:
+                                  _inputDecoration(
+                                    'Masukkan kata sandi',
+                                  ).copyWith(
+                                    suffixIcon: IconButton(
+                                      tooltip: _sembunyikanSandi
+                                          ? 'Tampilkan kata sandi'
+                                          : 'Sembunyikan kata sandi',
+                                      onPressed: () {
+                                        setState(() {
+                                          _sembunyikanSandi =
+                                              !_sembunyikanSandi;
+                                        });
+                                      },
+                                      icon: Icon(
+                                        _sembunyikanSandi
+                                            ? Icons.visibility_off_outlined
+                                            : Icons.visibility_outlined,
+                                        color: const Color(0xFF64748B),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
                                   return 'Kata sandi wajib diisi.';
@@ -393,8 +408,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF2455E8),
                                   foregroundColor: Colors.white,
-                                  disabledBackgroundColor:
-                                      const Color(0xFF93A9F0),
+                                  disabledBackgroundColor: const Color(
+                                    0xFF93A9F0,
+                                  ),
                                   disabledForegroundColor: Colors.white,
                                   elevation: 3,
                                   shape: RoundedRectangleBorder(
@@ -472,10 +488,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
       filled: true,
       fillColor: const Color(0xFFF1F5F9),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 16,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -495,4 +508,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-
