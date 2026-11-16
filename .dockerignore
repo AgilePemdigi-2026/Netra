@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+**/.venv
+.dart_tool
+.idea
+.vscode
+build
+**/build
+ai/dataset
+ai/images
+ai/models
+ai/results
+ai/runs
+ai/.venv
+env.json
+*.iml

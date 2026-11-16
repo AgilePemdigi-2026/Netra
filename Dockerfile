@@ -1,5 +1,4 @@
 
-# Stage 1: Build Flutter Web
 FROM ghcr.io/cirruslabs/flutter:stable AS builder
 
 WORKDIR /app
@@ -8,9 +7,14 @@ COPY pubspec.yaml pubspec.lock ./
 RUN flutter pub get
 
 COPY . .
-RUN flutter build web --release
 
-# Stage 2: Serve using Nginx
+ARG SUPABASE_URL
+ARG SUPABASE_KEY
+
+RUN flutter build web --release \
+    --dart-define=SUPABASE_URL="https://ecipnzomxnwlsuzydqty.supabase.co" \
+    --dart-define=SUPABASE_KEY="sb_publishable_rVOQZeIMmXhzP2EPQPoK5A_lpnkTlL8"
+
 FROM nginx:alpine
 
 COPY --from=builder /app/build/web /usr/share/nginx/html
