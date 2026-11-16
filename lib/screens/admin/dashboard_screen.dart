@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'daftar_temuan_screen.dart';
 
 import '../../services/supabase_service.dart';
 
@@ -1015,39 +1016,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _tabTemuan() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.construction_outlined,
-              size: 56,
-              color: Color(0xFF94A3B8),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Daftar Temuan',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF101828),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Halaman ini akan diimplementasi pada Sprint 3.',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 12.5,
-                color: const Color(0xFF667085),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return TemuanAksesibilitasTab(aktif: _tab == 1);
   }
 
   Widget _tabProfil() {
