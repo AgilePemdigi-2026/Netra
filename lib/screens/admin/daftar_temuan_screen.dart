@@ -99,7 +99,6 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
   _Filter _filter = _Filter.semua;
 
   bool _memuat = false;
-  bool _sudahMuat = false;
   String? _galat;
 
   @override
@@ -217,20 +216,22 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
 
     try {
       final hasil = await _ambilDaftar().timeout(const Duration(seconds: 20));
+
       if (!mounted) return;
+
       setState(() {
         _semua = hasil;
-        _sudahMuat = true;
         _memuat = false;
       });
     } catch (e) {
       debugPrint('Temuan: gagal memuat: $e');
+
       if (!mounted) return;
+
       setState(() {
         _galat = e is PostgrestException
             ? e.message
             : 'Data temuan belum bisa dimuat. Periksa koneksi internet.';
-        _sudahMuat = true;
         _memuat = false;
       });
     }
@@ -1048,72 +1049,684 @@ class _KartuTemuan extends StatelessWidget {
 }
 
 // =============================================================================
-// HALAMAN DETAIL (SEMENTARA)
-// Akan diganti dengan halaman Detail Temuan + verifikasi pada langkah berikutnya.
+// HALAMAN DETAIL TEMUAN
 // =============================================================================
+
 class _DetailTemuanSementara extends StatelessWidget {
   final TemuanItem temuan;
 
   const _DetailTemuanSementara({required this.temuan});
 
+  static const Color _biru = Color(0xFF0B3FA8);
+  static const Color _teks = Color(0xFF344054);
+  static const Color _abu = Color(0xFF667085);
+  static const Color _latar = Color(0xFFF3F4F6);
+
+  String _tanggalWib(DateTime? waktu) {
+    if (waktu == null) return '-';
+
+    const bulan = [
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
+    ];
+
+    final t = waktu.toUtc().add(const Duration(hours: 7));
+    String dua(int n) => n.toString().padLeft(2, '0');
+
+    return '${dua(t.day)} ${bulan[t.month - 1]} ${t.year}, '
+        '${dua(t.hour)}:${dua(t.minute)}';
+  }
+
+  String _koordinat(double? nilai) {
+    return nilai == null ? '-' : nilai.toStringAsFixed(6);
+  }
+
+  String? _urlFoto() {
+    final dokumentasi = temuan.dokumentasi?.trim() ?? '';
+
+    if (dokumentasi.isEmpty) return null;
+
+    if (dokumentasi.startsWith('http://') ||
+        dokumentasi.startsWith('https://')) {
+      return dokumentasi;
+    }
+
+    try {
+      return SupabaseService.client.storage
+          .from(_Db.bucketDokumentasi)
+          .getPublicUrl(dokumentasi);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _urlPeta() {
+    final lat = temuan.latitude;
+    final lon = temuan.longitude;
+
+    if (lat == null || lon == null) return '';
+
+    return Uri.https('staticmap.openstreetmap.de', '/staticmap.php', {
+      'center': '$lat,$lon',
+      'zoom': '15',
+      'size': '600x300',
+      'markers': '$lat,$lon,red-pushpin',
+    }).toString();
+  }
+
+  Color _warnaStatus() {
+    switch (temuan.status) {
+      case StatusTemuan.menunggu:
+        return const Color(0xFFFEF3C7);
+      case StatusTemuan.terverifikasi:
+        return const Color(0xFFDCFCE7);
+      case StatusTemuan.ditolak:
+        return const Color(0xFFFEE2E2);
+    }
+  }
+
+  Color _warnaTeksStatus() {
+    switch (temuan.status) {
+      case StatusTemuan.menunggu:
+        return const Color(0xFF92400E);
+      case StatusTemuan.terverifikasi:
+        return const Color(0xFF166534);
+      case StatusTemuan.ditolak:
+        return const Color(0xFF991B1B);
+    }
+  }
+
+  String _labelStatus() {
+    switch (temuan.status) {
+      case StatusTemuan.menunggu:
+        return 'Menunggu Verifikasi';
+      case StatusTemuan.terverifikasi:
+        return 'Terverifikasi';
+      case StatusTemuan.ditolak:
+        return 'Ditolak';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final judul = temuan.sudahDiproses ? 'Riwayat Verifikasi' : 'Detail Temuan';
+    final foto = _urlFoto();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
+      backgroundColor: _latar,
+
+      // HEADER
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1D4ED8),
-        foregroundColor: Colors.white,
-        title: Text(
-          judul,
-          style: GoogleFonts.plusJakartaSans(
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-          ),
+        backgroundColor: const Color(0xFFF8FAFC),
+        foregroundColor: _biru,
+        elevation: 0,
+        toolbarHeight: 48,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, size: 21),
+          onPressed: () => Navigator.pop(context),
+        ),
+        titleSpacing: 0,
+        title: Row(
+          children: [
+            const Icon(Icons.location_on_outlined, size: 14),
+            const SizedBox(width: 5),
+            Text(
+              'Dinas Sosial Kota Surabaya',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF475467),
+              ),
+            ),
+          ],
         ),
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.construction_outlined,
-                size: 56,
-                color: Color(0xFF94A3B8),
+
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _kartuInformasi(),
+                  const SizedBox(height: 9),
+                  _kartuLokasi(),
+                  const SizedBox(height: 9),
+                  _kartuDokumentasi(foto),
+                  const SizedBox(height: 9),
+                  _kartuDeteksi(),
+                ],
               ),
-              const SizedBox(height: 14),
-              Text(
-                'ID Temuan: ${temuan.id}',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF101828),
+            ),
+          ),
+
+          // TOMBOL PROSES VERIFIKASI
+          SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+              color: _latar,
+              child: SizedBox(
+                width: double.infinity,
+                height: 42,
+                child: ElevatedButton.icon(
+                  onPressed: temuan.sudahDiproses
+                      ? null
+                      : () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Halaman Verifikasi Temuan akan dihubungkan pada langkah berikutnya.',
+                              ),
+                            ),
+                          );
+                        },
+                  icon: const Icon(Icons.fact_check_outlined, size: 16),
+                  label: Text(
+                    temuan.sudahDiproses
+                        ? 'Temuan Sudah Diproses'
+                        : 'Proses Verifikasi',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _biru,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: const Color(0xFFCBD5E1),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // KARTU INFORMASI TEMUAN
+  // ============================================================
+  Widget _kartuInformasi() {
+    return _kartu(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _teksKecil('ID Temuan'),
+              const SizedBox(width: 5),
               Text(
-                temuan.jenis,
-                textAlign: TextAlign.center,
+                '#${temuan.id}',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
-                  color: const Color(0xFF475467),
+                  fontWeight: FontWeight.w800,
+                  color: _biru,
                 ),
               ),
-              const SizedBox(height: 12),
-              Text(
-                'Halaman ini akan dibuat pada langkah berikutnya.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12.5,
-                  color: const Color(0xFF667085),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _warnaStatus(),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.hourglass_top_rounded,
+                      size: 11,
+                      color: _warnaTeksStatus(),
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      _labelStatus(),
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w800,
+                        color: _warnaTeksStatus(),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 9),
+          _teksKecil('Jenis Permasalahan'),
+          const SizedBox(height: 3),
+          Text(
+            temuan.jenis,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF101828),
+            ),
+          ),
+          const SizedBox(height: 7),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F3F6),
+              borderRadius: BorderRadius.circular(7),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.info_outline, size: 13, color: _biru),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    temuan.deskripsi?.trim().isNotEmpty == true
+                        ? temuan.deskripsi!
+                        : 'Deskripsi permasalahan tidak tersedia.',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 10,
+                      height: 1.4,
+                      color: _teks,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // KARTU LOKASI LAPORAN
+  // ============================================================
+  Widget _kartuLokasi() {
+    final urlPeta = _urlPeta();
+
+    return _kartu(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _judulBagian(Icons.location_on_outlined, 'Lokasi Laporan'),
+          const SizedBox(height: 10),
+          Text(
+            temuan.lokasi,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 10.5,
+              height: 1.45,
+              fontWeight: FontWeight.w700,
+              color: _teks,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '📍 Latitude : ${_koordinat(temuan.latitude)} | '
+            'Longitude: ${_koordinat(temuan.longitude)}',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+              color: _abu,
+            ),
+          ),
+          const SizedBox(height: 9),
+
+          // PETA LOKASI
+          ClipRRect(
+            borderRadius: BorderRadius.circular(7),
+            child: SizedBox(
+              height: 112,
+              width: double.infinity,
+              child: urlPeta.isEmpty
+                  ? _petaTidakTersedia()
+                  : Image.network(
+                      urlPeta,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) return child;
+                        return _petaTidakTersedia(pesan: 'Memuat peta...');
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return _petaTidakTersedia();
+                      },
+                    ),
+            ),
+          ),
+
+          const SizedBox(height: 5),
+          Row(
+            children: [
+              const Icon(Icons.near_me, size: 12, color: _biru),
+              const SizedBox(width: 4),
+              Text(
+                'Titik Penyeberangan',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: _teks,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _barisWaktu(
+            Icons.access_time,
+            'Waktu Temuan',
+            _tanggalWib(temuan.waktu),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _petaTidakTersedia({String pesan = 'Peta tidak tersedia'}) {
+    return Container(
+      color: const Color(0xFFE8EDF1),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.map_outlined, color: _abu, size: 25),
+          const SizedBox(height: 4),
+          Text(
+            pesan,
+            style: GoogleFonts.plusJakartaSans(fontSize: 9, color: _abu),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // KARTU DOKUMENTASI LAPANGAN
+  // ============================================================
+  Widget _kartuDokumentasi(String? foto) {
+    return _kartu(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _judulBagian(Icons.photo_outlined, 'Dokumentasi Lapangan'),
+              const Spacer(),
+              Text(
+                'ID: #${temuan.id}',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w700,
+                  color: _abu,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: double.infinity,
+              height: 125,
+              child: foto == null
+                  ? _dokumentasiKosong()
+                  : Image.network(
+                      foto,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return _dokumentasiKosong();
+                      },
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dokumentasiKosong() {
+    return Container(
+      color: const Color(0xFFE5E7EB),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.hide_image_outlined,
+            size: 28,
+            color: Color(0xFF667085),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Dokumentasi Tidak Tersedia',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: _teks,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Laporan ini terekam via sistem telemetri AI '
+            'tanpa lampiran tangkapan kamera eksternal.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 8,
+              height: 1.4,
+              color: _abu,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // KARTU DETEKSI TERKAIT
+  // Nilai yang belum tersedia dari database ditampilkan sebagai '-'.
+  // ============================================================
+  Widget _kartuDeteksi() {
+    final akurasi = temuan.akurasi == null
+        ? '-'
+        : '${temuan.akurasi!.toStringAsFixed(2).replaceAll('.', ',')}%';
+    final tingkatBahaya = temuan.tingkat ?? '-';
+
+    return _kartu(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _judulBagian(Icons.remove_red_eye_outlined, 'Deteksi Terkait'),
+          const SizedBox(height: 9),
+          Row(
+            children: [
+              Expanded(
+                child: _kotakDeteksi(
+                  'Jenis Objek',
+                  '-',
+                  Icons.do_not_disturb_on,
+                  const Color(0xFFDC2626),
+                ),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: _kotakDeteksi(
+                  'Tingkat Bahaya',
+                  tingkatBahaya,
+                  Icons.warning_amber_rounded,
+                  const Color(0xFFD97706),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Row(
+            children: [
+              Expanded(
+                child: _kotakDeteksi(
+                  'Akurasi Deteksi',
+                  akurasi,
+                  Icons.verified_rounded,
+                  const Color(0xFF16A34A),
+                ),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: _kotakDeteksi(
+                  'Waktu Deteksi',
+                  '-',
+                  Icons.access_time,
+                  const Color(0xFF475467),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          _barisWaktu(Icons.auto_awesome, 'Waktu Lengkap Deteksi', '-'),
+        ],
+      ),
+    );
+  }
+
+  Widget _kotakDeteksi(String judul, String nilai, IconData ikon, Color warna) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F3F6),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            judul,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 8,
+              fontWeight: FontWeight.w500,
+              color: _abu,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(ikon, size: 12, color: warna),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  nilai,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: _teks,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // KOMPONEN BANTUAN
+  // ============================================================
+  Widget _kartu({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFEDEFF3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.025),
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _judulBagian(IconData ikon, String judul) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(ikon, size: 14, color: _biru),
+        const SizedBox(width: 6),
+        Text(
+          judul,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF101828),
+          ),
         ),
+      ],
+    );
+  }
+
+  Widget _teksKecil(String teks) {
+    return Text(
+      teks,
+      style: GoogleFonts.plusJakartaSans(
+        fontSize: 9,
+        fontWeight: FontWeight.w600,
+        color: _abu,
+      ),
+    );
+  }
+
+  Widget _barisWaktu(IconData ikon, String judul, String nilai) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F3F6),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Row(
+        children: [
+          Icon(ikon, size: 12, color: _abu),
+          const SizedBox(width: 5),
+          Text(
+            judul,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+              color: _abu,
+            ),
+          ),
+          const Spacer(),
+          Flexible(
+            child: Text(
+              nilai,
+              textAlign: TextAlign.right,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 8,
+                fontWeight: FontWeight.w700,
+                color: _teks,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

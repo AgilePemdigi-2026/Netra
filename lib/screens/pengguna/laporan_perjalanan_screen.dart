@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -152,9 +151,7 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
   Future<void> _bacakanLaporan() async {
     if (!mounted || !_ttsSiap) return;
 
-    final teks = StringBuffer(
-      _teks('Laporan perjalanan. ', 'Trip report. '),
-    );
+    final teks = StringBuffer(_teks('Laporan perjalanan. ', 'Trip report. '));
 
     if (_adaTemuan) {
       final total = widget.temuan.length;
@@ -187,9 +184,9 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
       teks.write(
         _teks(
           'Apakah Anda ingin mengirim laporan ini ke Dinas Sosial Kota Surabaya? '
-          'Ucapkan ya untuk mengirim, atau tidak untuk kembali ke beranda.',
+              'Ucapkan ya untuk mengirim, atau tidak untuk kembali ke beranda.',
           'Would you like to send this report to the Surabaya Social Services Office? '
-          'Say yes to send, or no to return to the home page.',
+              'Say yes to send, or no to return to the home page.',
         ),
       );
     } else {
@@ -267,9 +264,11 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
     });
 
     await _speech.listen(
-      localeId: _bahasaInggris ? 'en_US' : 'id_ID',
-      listenFor: const Duration(seconds: 8),
-      pauseFor: const Duration(seconds: 3),
+      listenOptions: stt.SpeechListenOptions(
+        localeId: _bahasaInggris ? 'en_US' : 'id_ID',
+        listenFor: const Duration(seconds: 8),
+        pauseFor: const Duration(seconds: 3),
+      ),
       onResult: (result) async {
         if (!mounted) return;
 
@@ -284,30 +283,30 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
         // Contoh: "tidak mau kirim" tidak boleh dianggap sebagai perintah kirim.
         final tidak = _bahasaInggris
             ? kata == 'no' ||
-                kata.startsWith('no ') ||
-                kata.contains('do not') ||
-                kata.contains("don't") ||
-                kata.contains('cancel') ||
-                kata.contains('go back') ||
-                kata.contains('return')
+                  kata.startsWith('no ') ||
+                  kata.contains('do not') ||
+                  kata.contains("don't") ||
+                  kata.contains('cancel') ||
+                  kata.contains('go back') ||
+                  kata.contains('return')
             : kata.contains('tidak') ||
-                kata.contains('enggak') ||
-                kata.contains('engga') ||
-                kata.contains('nggak') ||
-                kata.contains('batal') ||
-                kata.contains('kembali');
+                  kata.contains('enggak') ||
+                  kata.contains('engga') ||
+                  kata.contains('nggak') ||
+                  kata.contains('batal') ||
+                  kata.contains('kembali');
 
         final iya = _bahasaInggris
             ? kata == 'yes' ||
-                kata == 'yeah' ||
-                kata == 'yep' ||
-                kata.startsWith('yes ') ||
-                kata.contains('send')
+                  kata == 'yeah' ||
+                  kata == 'yep' ||
+                  kata.startsWith('yes ') ||
+                  kata.contains('send')
             : kata == 'ya' ||
-                kata == 'iya' ||
-                kata.startsWith('ya ') ||
-                kata.startsWith('iya ') ||
-                kata.contains('kirim');
+                  kata == 'iya' ||
+                  kata.startsWith('ya ') ||
+                  kata.startsWith('iya ') ||
+                  kata.contains('kirim');
 
         if (tidak) {
           await _batal();
@@ -327,14 +326,8 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
           setState(() {
             _mendengarkan = false;
             _statusSuara = _adaTemuan
-                ? _teks(
-                    'Ucapkan “Kirim” atau “Tidak”',
-                    'Say “Send” or “No”',
-                  )
-                : _teks(
-                    'Ucapkan “Tidak”',
-                    'Say “No”',
-                  );
+                ? _teks('Ucapkan “Kirim” atau “Tidak”', 'Say “Send” or “No”')
+                : _teks('Ucapkan “Tidak”', 'Say “No”');
           });
         }
       },
@@ -600,10 +593,7 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
                     'Apakah Anda ingin mengirim laporan ini ke Dinas Sosial Kota Surabaya?',
                     'Would you like to send this report to the Surabaya Social Services Office?',
                   )
-                : _teks(
-                    'Tidak Ditemukan Hambatan',
-                    'No Obstacles Found',
-                  ),
+                : _teks('Tidak Ditemukan Hambatan', 'No Obstacles Found'),
             style: GoogleFonts.plusJakartaSans(
               fontSize: 13,
               height: 1.4,

@@ -215,8 +215,7 @@ class _KameraScreenState extends State<KameraScreen> {
       final prefs = await SharedPreferences.getInstance();
 
       final bahasaTersimpan = prefs.getString('netra_bahasa') ?? 'id-ID';
-      final kecepatanTersimpan =
-          prefs.getDouble('netra_kecepatan') ?? 0.5;
+      final kecepatanTersimpan = prefs.getDouble('netra_kecepatan') ?? 0.5;
 
       if (!mounted) return;
 
@@ -343,9 +342,7 @@ class _KameraScreenState extends State<KameraScreen> {
           (jarak / detik) <= 3.0) {
         _jarakMeter += jarak;
         _posisiTerakhir = posisi;
-      } else if (jarak >= 5 &&
-          detik > 0 &&
-          (jarak / detik) <= 3.0) {
+      } else if (jarak >= 5 && detik > 0 && (jarak / detik) <= 3.0) {
         _posisiTerakhir = posisi;
       }
     } else if (_posisiTerakhir == null && akurasiLayak) {
@@ -419,13 +416,10 @@ class _KameraScreenState extends State<KameraScreen> {
     final kelas = nama.toLowerCase();
 
     if (_english) {
-      return _kelasRintanganEnglish[kelas] ??
-          _objekEnglish[kelas] ??
-          nama;
+      return _kelasRintanganEnglish[kelas] ?? _objekEnglish[kelas] ?? nama;
     }
 
-    return _kelasRintanganIndonesia[kelas] ??
-        _namaIndonesia(nama);
+    return _kelasRintanganIndonesia[kelas] ?? _namaIndonesia(nama);
   }
 
   String _namaIndonesia(String nama) {
@@ -440,15 +434,10 @@ class _KameraScreenState extends State<KameraScreen> {
       'potted plant': 'Tanaman',
     };
 
-    return tambahan[nama.toLowerCase()] ??
-        _deteksi.namaObjekIndonesia(nama);
+    return tambahan[nama.toLowerCase()] ?? _deteksi.namaObjekIndonesia(nama);
   }
 
-  void _catatRintangan(
-    String kelas,
-    String label,
-    double confidence,
-  ) {
+  void _catatRintangan(String kelas, String label, double confidence) {
     final sekarang = DateTime.now();
     final posisi = _posisiTerakhir;
 
@@ -470,8 +459,7 @@ class _KameraScreenState extends State<KameraScreen> {
 
     String jalan = _namaJalan;
 
-    if (jalan == 'Mencari lokasi...' ||
-        jalan == 'Lokasi belum tersedia') {
+    if (jalan == 'Mencari lokasi...' || jalan == 'Lokasi belum tersedia') {
       jalan = 'Lokasi tidak diketahui';
     } else if (jalan == 'Lokasi GPS ditemukan') {
       jalan = _detailLokasi;
@@ -496,13 +484,9 @@ class _KameraScreenState extends State<KameraScreen> {
 
     final sekarang = DateTime.now();
 
-    final valid = results
-        .where((hasil) => hasil.confidence >= 0.50)
-        .toList();
+    final valid = results.where((hasil) => hasil.confidence >= 0.50).toList();
 
-    valid.sort(
-      (a, b) => b.confidence.compareTo(a.confidence),
-    );
+    valid.sort((a, b) => b.confidence.compareTo(a.confidence));
 
     for (final hasil in valid) {
       final kelas = hasil.className.toLowerCase();
@@ -757,9 +741,11 @@ class _KameraScreenState extends State<KameraScreen> {
     });
 
     await _speech.listen(
-      localeId: _bahasaSpeech,
-      listenFor: const Duration(seconds: 8),
-      pauseFor: const Duration(seconds: 3),
+      listenOptions: stt.SpeechListenOptions(
+        localeId: _bahasaSpeech,
+        listenFor: const Duration(seconds: 8),
+        pauseFor: const Duration(seconds: 3),
+      ),
       onResult: (result) async {
         if (!mounted || !_konfirmasiTerbuka) return;
 
@@ -768,9 +754,7 @@ class _KameraScreenState extends State<KameraScreen> {
         if (kata.isEmpty) return;
 
         setState(() {
-          _statusSuara = _english
-              ? 'Heard: $kata'
-              : 'Terdengar: $kata';
+          _statusSuara = _english ? 'Heard: $kata' : 'Terdengar: $kata';
         });
 
         if (!result.finalResult) return;
@@ -778,30 +762,30 @@ class _KameraScreenState extends State<KameraScreen> {
         // Perintah penolakan diperiksa terlebih dahulu.
         final tidak = _english
             ? kata == 'no' ||
-                kata.contains('no ') ||
-                kata.contains('do not') ||
-                kata.contains("don't") ||
-                kata.contains('continue') ||
-                kata.contains('keep going')
+                  kata.contains('no ') ||
+                  kata.contains('do not') ||
+                  kata.contains("don't") ||
+                  kata.contains('continue') ||
+                  kata.contains('keep going')
             : kata.contains('tidak') ||
-                kata.contains('enggak') ||
-                kata.contains('engga') ||
-                kata.contains('nggak') ||
-                kata.contains('lanjut');
+                  kata.contains('enggak') ||
+                  kata.contains('engga') ||
+                  kata.contains('nggak') ||
+                  kata.contains('lanjut');
 
         final iya = _english
             ? kata == 'yes' ||
-                kata.startsWith('yes ') ||
-                kata.contains('end the journey') ||
-                kata.contains('finish the journey') ||
-                kata.contains('i have arrived')
+                  kata.startsWith('yes ') ||
+                  kata.contains('end the journey') ||
+                  kata.contains('finish the journey') ||
+                  kata.contains('i have arrived')
             : kata == 'iya' ||
-                kata == 'ya' ||
-                kata.startsWith('iya ') ||
-                kata.startsWith('ya ') ||
-                kata.contains('sudah sampai') ||
-                kata.contains('akhiri') ||
-                kata.contains('mengakhiri');
+                  kata == 'ya' ||
+                  kata.startsWith('iya ') ||
+                  kata.startsWith('ya ') ||
+                  kata.contains('sudah sampai') ||
+                  kata.contains('akhiri') ||
+                  kata.contains('mengakhiri');
 
         if (tidak) {
           await _lanjutkanPerjalanan();
@@ -867,11 +851,11 @@ class _KameraScreenState extends State<KameraScreen> {
                             Text(
                               jeda
                                   ? (_english
-                                      ? 'Journey Paused'
-                                      : 'Perjalanan Dijeda')
+                                        ? 'Journey Paused'
+                                        : 'Perjalanan Dijeda')
                                   : (_english
-                                      ? 'Journey Active'
-                                      : 'Perjalanan Aktif'),
+                                        ? 'Journey Active'
+                                        : 'Perjalanan Aktif'),
                               style: GoogleFonts.poppins(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
@@ -987,11 +971,11 @@ class _KameraScreenState extends State<KameraScreen> {
                                           Text(
                                             _voiceAktif
                                                 ? (_english
-                                                    ? 'NETRA VOICE'
-                                                    : 'SUARA NETRA')
+                                                      ? 'NETRA VOICE'
+                                                      : 'SUARA NETRA')
                                                 : (_english
-                                                    ? 'VOICE DISABLED'
-                                                    : 'SUARA DINONAKTIFKAN'),
+                                                      ? 'VOICE DISABLED'
+                                                      : 'SUARA DINONAKTIFKAN'),
                                             style: GoogleFonts.poppins(
                                               color: const Color(0xFF4ADE80),
                                               fontSize: 10,
@@ -1043,11 +1027,11 @@ class _KameraScreenState extends State<KameraScreen> {
                                       child: Text(
                                         _jumlahObjek == 0
                                             ? (_english
-                                                ? 'AI camera is active. Point it forward.'
-                                                : 'Kamera AI aktif. Arahkan ke depan.')
+                                                  ? 'AI camera is active. Point it forward.'
+                                                  : 'Kamera AI aktif. Arahkan ke depan.')
                                             : (_english
-                                                ? '$_jumlahObjek objects detected by AI.'
-                                                : '$_jumlahObjek objek terdeteksi oleh AI.'),
+                                                  ? '$_jumlahObjek objects detected by AI.'
+                                                  : '$_jumlahObjek objek terdeteksi oleh AI.'),
                                         style: GoogleFonts.poppins(
                                           color: Colors.white,
                                           fontSize: 10,
@@ -1179,10 +1163,7 @@ class _KameraScreenState extends State<KameraScreen> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        icon: const Icon(
-                          Icons.stop_circle_outlined,
-                          size: 19,
-                        ),
+                        icon: const Icon(Icons.stop_circle_outlined, size: 19),
                         label: Text(
                           _english ? 'End Journey' : 'Akhiri Perjalanan',
                           style: GoogleFonts.poppins(
@@ -1268,10 +1249,7 @@ class _KameraScreenState extends State<KameraScreen> {
           ),
           const SizedBox(height: 12),
           Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 10,
-              vertical: 4,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               color: const Color(0xFFE4E9FF),
               borderRadius: BorderRadius.circular(20),
@@ -1465,12 +1443,10 @@ class _KameraScreenState extends State<KameraScreen> {
                       children: [
                         Text(
                           _mendengarkan
-                              ? (_english
-                                  ? 'LISTENING'
-                                  : 'SEDANG MENDENGARKAN')
+                              ? (_english ? 'LISTENING' : 'SEDANG MENDENGARKAN')
                               : (_english
-                                  ? 'TAP TO SPEAK'
-                                  : 'TEKAN UNTUK BERBICARA'),
+                                    ? 'TAP TO SPEAK'
+                                    : 'TEKAN UNTUK BERBICARA'),
                           style: GoogleFonts.plusJakartaSans(
                             color: const Color(0xFF9DB7FF),
                             fontSize: 9.5,
@@ -1521,9 +1497,7 @@ class _KameraScreenState extends State<KameraScreen> {
             Icon(
               icon,
               size: 13,
-              color: aktif
-                  ? const Color(0xFF334155)
-                  : const Color(0xFF94A3B8),
+              color: aktif ? const Color(0xFF334155) : const Color(0xFF94A3B8),
             ),
             const SizedBox(width: 4),
             Text(
