@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'daftar_temuan_screen.dart';
+import 'profile_screen.dart';
 
 import '../../services/supabase_service.dart';
 
@@ -1020,93 +1021,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _tabProfil() {
-    final email = SupabaseService.client.auth.currentUser?.email ?? '-';
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFEDEFF3)),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE4EAFF),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.person_outline_rounded,
-                    size: 38,
-                    color: _biru,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  _namaAdmin ?? 'Petugas Dinas Sosial',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF101828),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  email,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12.5,
-                    color: const Color(0xFF667085),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Dinas Sosial Kota Surabaya',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF0A3277),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: _logout,
-              icon: const Icon(Icons.logout_rounded, size: 18),
-              label: Text(
-                'Keluar',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFDC2626),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return ProfilAdminTab(namaAdmin: _namaAdmin, onKeluar: _logout);
   }
 
   // ---------------------------------------------------------------------------
