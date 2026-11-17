@@ -22,6 +22,7 @@ class KameraScreen extends StatefulWidget {
 
 class _KameraScreenState extends State<KameraScreen> {
   static const String _model = 'yolo26n';
+  static const String _secondaryModel = 'assets/models/netra_v4.tflite';
 
   static const double _tinggiAreaBawahJeda = 172;
 
@@ -31,6 +32,7 @@ class _KameraScreenState extends State<KameraScreen> {
     'open_manhole': 'Lubang drainase terbuka',
     'stairs': 'Tangga',
     'pole': 'Tiang',
+    'losa-agrietada': 'Jalan rusak',
   };
 
   static const Map<String, String> _kelasRintanganEnglish = {
@@ -39,6 +41,7 @@ class _KameraScreenState extends State<KameraScreen> {
     'open_manhole': 'Open manhole',
     'stairs': 'Stairs',
     'pole': 'Pole',
+    'losa-agrietada': 'Damaged road',
   };
 
   static const Map<String, String> _objekEnglish = {
@@ -891,6 +894,7 @@ class _KameraScreenState extends State<KameraScreen> {
                           Positioned.fill(
                             child: YOLOView(
                               modelPath: _model,
+                              secondaryModelPath: _secondaryModel,
                               onResult: _prosesDeteksi,
                             ),
                           ),

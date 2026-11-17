@@ -1,0 +1,103 @@
+
+Feature: Feature 1 - Kamera Deteksi
+
+Scenario: Membuka kamera deteksi
+  Given pengguna berada di halaman Beranda
+  When pengguna menekan Mulai Perjalanan
+  Then halaman kamera ditampilkan
+
+Scenario: Mendeteksi kerusakan trotoar
+  Given kamera sudah aktif
+  When kamera menangkap gambar lingkungan
+  Then sistem menampilkan label dan bounding box hasil deteksi YOLO
+
+
+Feature: Feature 2 - Peringatan Suara dan Getaran
+
+Scenario: Memberikan peringatan ketika objek terdeteksi
+  Given kamera sedang melakukan deteksi
+  When sistem mendeteksi objek yang membutuhkan peringatan
+  Then sistem memberikan suara dan getaran
+
+Scenario: Menonaktifkan peringatan
+  Given pengguna berada di halaman Pengaturan
+  When pengguna menonaktifkan suara dan getaran
+  Then sistem tidak memberikan peringatan suara dan getaran
+
+
+Feature: Feature 3 - Ringkasan Temuan Aksesibilitas
+
+Scenario: Menampilkan ringkasan temuan
+  Given pengguna telah menyelesaikan perjalanan
+  When halaman Ringkasan Temuan dibuka
+  Then sistem menampilkan temuan yang terekam
+
+Scenario: Menampilkan kondisi tanpa temuan
+  Given perjalanan selesai tanpa temuan
+  When halaman Ringkasan Temuan dibuka
+  Then sistem menampilkan pesan tidak ada temuan
+
+
+Feature: Feature 4 - Beranda
+
+Scenario: Menampilkan halaman Beranda
+  Given aplikasi berhasil dibuka
+  When halaman utama dimuat
+  Then sistem menampilkan komponen utama Beranda
+
+Scenario: Memulai perjalanan
+  Given pengguna berada di halaman Beranda
+  When pengguna menekan Mulai Perjalanan
+  Then sistem membuka halaman Kamera Deteksi
+
+
+Feature: Feature 5 - Pengaturan
+
+Scenario: Mengubah pengaturan suara
+  Given pengguna berada di halaman Pengaturan
+  When pengguna mengubah preferensi suara
+  Then sistem menyimpan perubahan pengaturan suara
+
+Scenario: Mengubah pengaturan getaran
+  Given pengguna berada di halaman Pengaturan
+  When pengguna mengubah preferensi getaran
+  Then sistem menyimpan perubahan pengaturan getaran
+
+
+Feature: Feature 6 - Selesai Perjalanan
+
+Scenario: Meminta konfirmasi mengakhiri perjalanan
+  Given pengguna sedang melakukan perjalanan
+  When pengguna menekan Akhiri Perjalanan
+  Then sistem menampilkan konfirmasi
+
+Scenario: Menghentikan proses perjalanan
+  Given pengguna mengonfirmasi pengakhiran perjalanan
+  When sistem menyelesaikan perjalanan
+  Then kamera dan proses deteksi dihentikan
+
+
+Feature: Feature 7 - Login Admin
+
+Scenario: Login menggunakan kredensial valid
+  Given admin berada di halaman Login
+  When admin memasukkan email dan password yang valid
+  Then sistem membuka Dashboard Admin
+
+Scenario: Login menggunakan kredensial tidak valid
+  Given admin berada di halaman Login
+  When admin memasukkan kredensial yang salah
+  Then sistem menampilkan pesan kesalahan
+
+
+Feature: Feature 8 - Dashboard
+
+Scenario: Menampilkan Dashboard Admin
+  Given admin berhasil login
+  When halaman Dashboard dibuka
+  Then sistem menampilkan statistik perjalanan dan temuan
+
+Scenario: Melihat detail temuan
+  Given admin berada di Dashboard
+  When admin memilih salah satu laporan temuan
+  Then sistem menampilkan detail laporan
