@@ -4,6 +4,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/supabase_service.dart';
 
+import 'riwayat_verifikasi_screen.dart';
+import 'verifikasi_screen.dart';
+
 // =============================================================================
 // KONFIGURASI DATABASE (sesuai ERD Supabase NETRA)
 // =============================================================================
@@ -356,9 +359,13 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
       _semua.where((t) => t.status == status).length;
 
   void _bukaDetail(TemuanItem temuan) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => _DetailTemuanSementara(temuan: temuan)),
-    );
+    // Sudah diverifikasi/ditolak -> halaman Riwayat Verifikasi.
+    // Masih menunggu -> halaman Detail Temuan (untuk diverifikasi).
+    final Widget halaman = temuan.sudahDiproses
+        ? RiwayatVerifikasiScreen(idTemuanFokus: temuan.id)
+        : _DetailTemuanSementara(temuan: temuan);
+
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => halaman));
   }
 
   // ---------------------------------------------------------------------------
@@ -1224,11 +1231,9 @@ class _DetailTemuanSementara extends StatelessWidget {
                   onPressed: temuan.sudahDiproses
                       ? null
                       : () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Halaman Verifikasi Temuan akan dihubungkan pada langkah berikutnya.',
-                              ),
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => VerifikasiScreen(temuan: temuan),
                             ),
                           );
                         },
