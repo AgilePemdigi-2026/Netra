@@ -4,7 +4,6 @@ class SupabaseService {
   static SupabaseClient get client => Supabase.instance.client;
 
   static Future<int> siapkanPengguna() async {
-
     if (client.auth.currentSession == null) {
       await client.auth.signInAnonymously();
     }
@@ -74,16 +73,10 @@ class SupabaseService {
 
     int total = 0, terverifikasi = 0, belumDiverifikasi = 0;
 
-    // Ekstraksi length dari list yang dikembalikan
-    if (totalRespon is List) {
-      total = totalRespon.length;
-    }
-    if (verifiedRespon is List) {
-      terverifikasi = verifiedRespon.length;
-    }
-    if (unverifiedRespon is List) {
-      belumDiverifikasi = unverifiedRespon.length;
-    }
+    // Menghitung jumlah data dari hasil query Supabase
+    total = totalRespon.length;
+    terverifikasi = verifiedRespon.length;
+    belumDiverifikasi = unverifiedRespon.length;
 
     return {
       'total': total,

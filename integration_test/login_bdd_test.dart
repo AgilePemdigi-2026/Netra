@@ -23,10 +23,7 @@ bool get _adaAkunAdmin =>
 
 Future<void> bukaLogin(WidgetTester tester) async {
   await tester.pumpWidget(
-    const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: LoginScreen(),
-    ),
+    const MaterialApp(debugShowCheckedModeBanner: false, home: LoginScreen()),
   );
 
   await tungguTeks(tester, find.text('Kata Sandi'));
@@ -38,77 +35,77 @@ void main() {
   group('BDD - Login Admin NETRA', () {
     setUpAll(() async {
       if (_supabaseSiap) {
-        await Supabase.initialize(url: _supabaseUrl, anonKey: _supabaseKey);
+        await Supabase.initialize(
+          url: _supabaseUrl,
+          publishableKey: _supabaseKey,
+        );
       }
     });
 
-    testWidgets(
-      'BDD-LOG-01: Halaman login ditampilkan dengan benar',
-      (WidgetTester tester) async {
-        // GIVEN: Pengguna membuka halaman login
-        await bukaLogin(tester);
+    testWidgets('BDD-LOG-01: Halaman login ditampilkan dengan benar', (
+      WidgetTester tester,
+    ) async {
+      // GIVEN: Pengguna membuka halaman login
+      await bukaLogin(tester);
 
-        // THEN: Elemen utama login tampil
-        expect(find.text('Dinas Sosial Kota Surabaya'), findsOneWidget);
-        expect(
-          find.text(
-            'Sistem Pelayanan Aksesibilitas\n'
-            'Publik Berbasis AI untuk\n'
-            'Disabilitas Netra di Surabaya',
-          ),
-          findsOneWidget,
-        );
-        expect(find.text('Email'), findsOneWidget);
-        expect(find.text('Kata Sandi'), findsOneWidget);
-        expect(find.text('Masukkan email petugas'), findsOneWidget);
-        expect(find.text('Masukkan kata sandi'), findsOneWidget);
-        expect(find.text('Masuk'), findsOneWidget);
-        expect(find.byType(TextFormField), findsNWidgets(2));
+      // THEN: Elemen utama login tampil
+      expect(find.text('Dinas Sosial Kota Surabaya'), findsOneWidget);
+      expect(
+        find.text(
+          'Sistem Pelayanan Aksesibilitas\n'
+          'Publik Berbasis AI untuk\n'
+          'Disabilitas Netra di Surabaya',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Email'), findsOneWidget);
+      expect(find.text('Kata Sandi'), findsOneWidget);
+      expect(find.text('Masukkan email petugas'), findsOneWidget);
+      expect(find.text('Masukkan kata sandi'), findsOneWidget);
+      expect(find.text('Masuk'), findsOneWidget);
+      expect(find.byType(TextFormField), findsNWidgets(2));
 
-        // Fitur "Lupa Sandi" sudah dihapus dari desain.
-        expect(find.text('Lupa Sandi?'), findsNothing);
+      // Fitur "Lupa Sandi" sudah dihapus dari desain.
+      expect(find.text('Lupa Sandi?'), findsNothing);
 
-        debugPrint('BDD-LOG-01 PASS: Halaman login tampil lengkap');
-      },
-    );
+      debugPrint('BDD-LOG-01 PASS: Halaman login tampil lengkap');
+    });
 
-    testWidgets(
-      'BDD-LOG-02: Login gagal ketika email dan kata sandi kosong',
-      (WidgetTester tester) async {
-        // GIVEN: Kedua kolom kosong
-        await bukaLogin(tester);
+    testWidgets('BDD-LOG-02: Login gagal ketika email dan kata sandi kosong', (
+      WidgetTester tester,
+    ) async {
+      // GIVEN: Kedua kolom kosong
+      await bukaLogin(tester);
 
-        // WHEN: Pengguna menekan Masuk
-        await tekan(tester, find.text('Masuk'));
+      // WHEN: Pengguna menekan Masuk
+      await tekan(tester, find.text('Masuk'));
 
-        // THEN: Muncul pesan validasi dan tetap di halaman login
-        expect(find.text('Email wajib diisi.'), findsOneWidget);
-        expect(find.text('Kata sandi wajib diisi.'), findsOneWidget);
-        expect(find.text('Masuk'), findsOneWidget);
+      // THEN: Muncul pesan validasi dan tetap di halaman login
+      expect(find.text('Email wajib diisi.'), findsOneWidget);
+      expect(find.text('Kata sandi wajib diisi.'), findsOneWidget);
+      expect(find.text('Masuk'), findsOneWidget);
 
-        debugPrint('BDD-LOG-02 PASS: Validasi kolom kosong muncul');
-      },
-    );
+      debugPrint('BDD-LOG-02 PASS: Validasi kolom kosong muncul');
+    });
 
-    testWidgets(
-      'BDD-LOG-03: Login gagal ketika format email tidak valid',
-      (WidgetTester tester) async {
-        // GIVEN: Email tidak berformat benar dan kata sandi terisi
-        await bukaLogin(tester);
+    testWidgets('BDD-LOG-03: Login gagal ketika format email tidak valid', (
+      WidgetTester tester,
+    ) async {
+      // GIVEN: Email tidak berformat benar dan kata sandi terisi
+      await bukaLogin(tester);
 
-        await tester.enterText(find.byType(TextFormField).first, 'bukanemail');
-        await tester.enterText(find.byType(TextFormField).last, 'abc12345');
-        await tester.pump(const Duration(milliseconds: 300));
+      await tester.enterText(find.byType(TextFormField).first, 'bukanemail');
+      await tester.enterText(find.byType(TextFormField).last, 'abc12345');
+      await tester.pump(const Duration(milliseconds: 300));
 
-        // WHEN: Pengguna menekan Masuk
-        await tekan(tester, find.text('Masuk'));
+      // WHEN: Pengguna menekan Masuk
+      await tekan(tester, find.text('Masuk'));
 
-        // THEN: Muncul pesan format email tidak valid
-        expect(find.text('Format email tidak valid.'), findsOneWidget);
+      // THEN: Muncul pesan format email tidak valid
+      expect(find.text('Format email tidak valid.'), findsOneWidget);
 
-        debugPrint('BDD-LOG-03 PASS: Format email tidak valid ditolak');
-      },
-    );
+      debugPrint('BDD-LOG-03 PASS: Format email tidak valid ditolak');
+    });
 
     testWidgets(
       'BDD-LOG-04: Pengguna dapat menampilkan dan menyembunyikan kata sandi',
@@ -163,42 +160,30 @@ void main() {
       skip: !_supabaseSiap,
     );
 
-    testWidgets(
-      'BDD-LOG-06: Admin terdaftar berhasil login',
-      (WidgetTester tester) async {
-        // GIVEN: Admin memasukkan email dan kata sandi yang benar
-        await bukaLogin(tester);
+    testWidgets('BDD-LOG-06: Admin terdaftar berhasil login', (
+      WidgetTester tester,
+    ) async {
+      // GIVEN: Admin memasukkan email dan kata sandi yang benar
+      await bukaLogin(tester);
 
-        await tester.enterText(
-          find.byType(TextFormField).first,
-          _emailAdmin,
-        );
-        await tester.enterText(
-          find.byType(TextFormField).last,
-          _sandiAdmin,
-        );
-        await tester.pump(const Duration(milliseconds: 300));
+      await tester.enterText(find.byType(TextFormField).first, _emailAdmin);
+      await tester.enterText(find.byType(TextFormField).last, _sandiAdmin);
+      await tester.pump(const Duration(milliseconds: 300));
 
-        try {
-          // WHEN: Admin menekan Masuk
-          await tekan(tester, find.text('Masuk'));
+      try {
+        // WHEN: Admin menekan Masuk
+        await tekan(tester, find.text('Masuk'));
 
-          // THEN: Admin masuk ke dashboard.
-          // Catatan: saat ini masih dashboard sementara. Jika dashboard
-          // asli sudah menggantikan, sesuaikan teks pengecekan ini.
-          await tungguTeks(
-            tester,
-            find.text('Login berhasil'),
-            maksDetik: 25,
-          );
-          expect(find.text('Dashboard Admin (Sementara)'), findsOneWidget);
+        // THEN: Admin masuk ke dashboard.
+        // Catatan: saat ini masih dashboard sementara. Jika dashboard
+        // asli sudah menggantikan, sesuaikan teks pengecekan ini.
+        await tungguTeks(tester, find.text('Login berhasil'), maksDetik: 25);
+        expect(find.text('Dashboard Admin (Sementara)'), findsOneWidget);
 
-          debugPrint('BDD-LOG-06 PASS: Admin berhasil login');
-        } finally {
-          await Supabase.instance.client.auth.signOut();
-        }
-      },
-      skip: !_adaAkunAdmin,
-    );
+        debugPrint('BDD-LOG-06 PASS: Admin berhasil login');
+      } finally {
+        await Supabase.instance.client.auth.signOut();
+      }
+    }, skip: !_adaAkunAdmin);
   });
 }
