@@ -12,10 +12,7 @@ Future<void> bukaKamera(WidgetTester tester) async {
   SharedPreferences.setMockInitialValues({});
 
   await tester.pumpWidget(
-    const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: KameraScreen(),
-    ),
+    const MaterialApp(debugShowCheckedModeBanner: false, home: KameraScreen()),
   );
 
   await tungguTeks(tester, find.text('Perjalanan Aktif'));
@@ -40,51 +37,80 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   group('BDD - Kamera Deteksi NETRA', () {
-    testWidgets(
-      'BDD-KAM-01: Layar kamera deteksi tampil dalam keadaan aktif',
-      (WidgetTester tester) async {
-        await denganKamera(tester, () async {
-          // GIVEN: Izin kamera dan lokasi sudah diberikan (lewat ADB)
-          // WHEN: Pengguna membuka Kamera Deteksi
-          // THEN: Tampilan kamera dan panel informasi muncul
-          expect(find.byType(YOLOView), findsOneWidget);
-          expect(find.text('Perjalanan Aktif'), findsOneWidget);
-          expect(find.text('SUARA NETRA'), findsOneWidget);
-          expect(find.text('Voice'), findsOneWidget);
-          expect(find.text('Getar'), findsOneWidget);
-          expect(find.text('LOKASI SEKARANG'), findsOneWidget);
-          expect(find.text('Jarak Tempuh'), findsOneWidget);
-          expect(find.text('Durasi Navigasi'), findsOneWidget);
-          expect(find.text('Akhiri Perjalanan'), findsOneWidget);
+    testWidgets('BDD-KAM-01: Layar kamera deteksi tampil dalam keadaan aktif', (
+      WidgetTester tester,
+    ) async {
+      await denganKamera(tester, () async {
+        // GIVEN: Izin kamera dan lokasi sudah diberikan (lewat ADB)
+        // WHEN: Pengguna membuka Kamera Deteksi
+        // THEN: Tampilan kamera dan panel informasi muncul
+        expect(find.byType(YOLOView), findsOneWidget);
+        expect(find.text('Perjalanan Aktif'), findsOneWidget);
+        expect(find.text('SUARA NETRA'), findsOneWidget);
+        expect(find.text('Voice'), findsOneWidget);
+        expect(find.text('Getar'), findsOneWidget);
+        expect(find.text('LOKASI SEKARANG'), findsOneWidget);
+        expect(find.text('Jarak Tempuh'), findsOneWidget);
+        expect(find.text('Durasi Navigasi'), findsOneWidget);
+        expect(find.text('Akhiri Perjalanan'), findsOneWidget);
 
-          debugPrint('BDD-KAM-01 PASS: Layar Kamera Deteksi tampil aktif');
-        });
-      },
-    );
+        debugPrint('BDD-KAM-01 PASS: Layar Kamera Deteksi tampil aktif');
+      });
+    });
 
-    testWidgets(
-      'BDD-KAM-02: Pengguna menonaktifkan dan mengaktifkan suara',
-      (WidgetTester tester) async {
-        await denganKamera(tester, () async {
-          // GIVEN: Suara aktif
-          expect(find.text('SUARA NETRA'), findsOneWidget);
+    testWidgets('BDD-KAM-02: Pengguna menonaktifkan dan mengaktifkan suara', (
+      WidgetTester tester,
+    ) async {
+      await denganKamera(tester, () async {
+        // GIVEN: Suara aktif
+        expect(find.text('SUARA NETRA'), findsOneWidget);
 
-          // WHEN: Pengguna menekan Voice
-          await tekan(tester, find.text('Voice'));
+        // WHEN: Pengguna menekan Voice
+        await tekan(tester, find.text('Voice'));
 
-          // THEN: Status berubah menjadi suara dinonaktifkan
-          await tungguTeks(tester, find.text('SUARA DINONAKTIFKAN'));
+        // THEN: Status berubah menjadi suara dinonaktifkan
+        await tungguTeks(tester, find.text('SUARA DINONAKTIFKAN'));
 
-          // WHEN: Ditekan lagi
-          await tekan(tester, find.text('Voice'));
+        // WHEN: Ditekan lagi
+        await tekan(tester, find.text('Voice'));
 
-          // THEN: Suara aktif kembali
-          await tungguTeks(tester, find.text('SUARA NETRA'));
+        // THEN: Suara aktif kembali
+        await tungguTeks(tester, find.text('SUARA NETRA'));
 
-          debugPrint('BDD-KAM-02 PASS: Toggle suara berfungsi');
-        });
-      },
-    );
+        debugPrint('BDD-KAM-02 PASS: Toggle suara berfungsi');
+      });
+    });
+  });
+
+  testWidgets('BDD-KAM-03: Pengguna menonaktifkan dan mengaktifkan getaran', (
+    WidgetTester tester,
+  ) async {
+    await denganKamera(tester, () async {
+      // GIVEN: Fitur getar dalam keadaan aktif
+      final ikonGetarAwal = tester.widget<Icon>(find.byIcon(Icons.vibration));
+
+      expect(ikonGetarAwal.color, const Color(0xFF334155));
+
+      // WHEN: Pengguna menekan tombol Getar
+      await tekan(tester, find.text('Getar'));
+
+      // THEN: Tampilan menunjukkan getar nonaktif
+      final ikonGetarNonaktif = tester.widget<Icon>(
+        find.byIcon(Icons.vibration),
+      );
+
+      expect(ikonGetarNonaktif.color, const Color(0xFF94A3B8));
+
+      // WHEN: Pengguna menekan tombol Getar kembali
+      await tekan(tester, find.text('Getar'));
+
+      // THEN: Tampilan menunjukkan getar aktif kembali
+      final ikonGetarAktif = tester.widget<Icon>(find.byIcon(Icons.vibration));
+
+      expect(ikonGetarAktif.color, const Color(0xFF334155));
+
+      debugPrint('BDD-KAM-03 PASS: Toggle getar berfungsi');
+    });
   });
 
   group('BDD - Selesai Perjalanan NETRA', () {
@@ -113,50 +139,48 @@ void main() {
       },
     );
 
-    testWidgets(
-      'BDD-SEL-02: Pengguna membatalkan pengakhiran perjalanan',
-      (WidgetTester tester) async {
-        await denganKamera(tester, () async {
-          // GIVEN: Konfirmasi akhiri perjalanan sedang tampil
-          await tekan(tester, find.text('Akhiri Perjalanan'));
-          await tungguTeks(tester, find.text('Perjalanan Dijeda'));
+    testWidgets('BDD-SEL-02: Pengguna membatalkan pengakhiran perjalanan', (
+      WidgetTester tester,
+    ) async {
+      await denganKamera(tester, () async {
+        // GIVEN: Konfirmasi akhiri perjalanan sedang tampil
+        await tekan(tester, find.text('Akhiri Perjalanan'));
+        await tungguTeks(tester, find.text('Perjalanan Dijeda'));
 
-          // WHEN: Pengguna menekan Tidak, Lanjutkan
-          await tekan(tester, find.text('Tidak, Lanjutkan'));
+        // WHEN: Pengguna menekan Tidak, Lanjutkan
+        await tekan(tester, find.text('Tidak, Lanjutkan'));
 
-          // THEN: Perjalanan aktif kembali
-          await tungguTeks(tester, find.text('Perjalanan Aktif'));
-          expect(find.text('Perjalanan Dijeda'), findsNothing);
-          expect(find.text('Akhiri Perjalanan'), findsOneWidget);
+        // THEN: Perjalanan aktif kembali
+        await tungguTeks(tester, find.text('Perjalanan Aktif'));
+        expect(find.text('Perjalanan Dijeda'), findsNothing);
+        expect(find.text('Akhiri Perjalanan'), findsOneWidget);
 
-          debugPrint('BDD-SEL-02 PASS: Perjalanan dilanjutkan setelah batal');
-        });
-      },
-    );
+        debugPrint('BDD-SEL-02 PASS: Perjalanan dilanjutkan setelah batal');
+      });
+    });
 
-    testWidgets(
-      'BDD-SEL-03: Pengguna mengonfirmasi pengakhiran perjalanan',
-      (WidgetTester tester) async {
-        await denganKamera(tester, () async {
-          // GIVEN: Konfirmasi akhiri perjalanan sedang tampil
-          await tekan(tester, find.text('Akhiri Perjalanan'));
-          await tungguTeks(tester, find.text('Perjalanan Dijeda'));
+    testWidgets('BDD-SEL-03: Pengguna mengonfirmasi pengakhiran perjalanan', (
+      WidgetTester tester,
+    ) async {
+      await denganKamera(tester, () async {
+        // GIVEN: Konfirmasi akhiri perjalanan sedang tampil
+        await tekan(tester, find.text('Akhiri Perjalanan'));
+        await tungguTeks(tester, find.text('Perjalanan Dijeda'));
 
-          // WHEN: Pengguna menekan Ya, Akhiri
-          await tekan(tester, find.text('Ya, Akhiri'));
+        // WHEN: Pengguna menekan Ya, Akhiri
+        await tekan(tester, find.text('Ya, Akhiri'));
 
-          // THEN: Pengguna dibawa ke Laporan Perjalanan
-          // (di aplikasi saat ini bukan ke Beranda seperti di BAB 3)
-          await tungguTeks(
-            tester,
-            find.text('Laporan Perjalanan'),
-            maksDetik: 20,
-          );
-          expect(find.text('Perjalanan Dijeda'), findsNothing);
+        // THEN: Pengguna dibawa ke Laporan Perjalanan
+        // (di aplikasi saat ini bukan ke Beranda seperti di BAB 3)
+        await tungguTeks(
+          tester,
+          find.text('Laporan Perjalanan'),
+          maksDetik: 20,
+        );
+        expect(find.text('Perjalanan Dijeda'), findsNothing);
 
-          debugPrint('BDD-SEL-03 PASS: Perjalanan diakhiri, Laporan tampil');
-        });
-      },
-    );
+        debugPrint('BDD-SEL-03 PASS: Perjalanan diakhiri, Laporan tampil');
+      });
+    });
   });
 }

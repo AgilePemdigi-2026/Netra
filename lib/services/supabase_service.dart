@@ -3,35 +3,40 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class SupabaseService {
   static SupabaseClient get client => Supabase.instance.client;
 
+  // =========================================================
+  // PENGGUNA DAN PENGATURAN
+  // =========================================================
+
   static Future<int> siapkanPengguna() async {
     if (client.auth.currentSession == null) {
       await client.auth.signInAnonymously();
     }
 
-    final uid = client.auth.currentUser!.id;
+    final user = client.auth.currentUser;
+    if (user == null) {
+      throw StateError('Sesi pengguna Supabase tidak tersedia.');
+    }
 
     final pengguna = await client
         .from('pengguna')
         .select('id_pengguna')
-        .eq('auth_user_id', uid)
+        .eq('auth_user_id', user.id)
         .maybeSingle();
 
     if (pengguna != null) {
-      final id = pengguna['id_pengguna'] as int;
+      final id = (pengguna['id_pengguna'] as num).toInt();
       await _pastikanPengaturan(id);
       return id;
     }
 
     final penggunaBaru = await client
         .from('pengguna')
-        .insert({'auth_user_id': uid})
+        .insert({'auth_user_id': user.id})
         .select('id_pengguna')
         .single();
 
-    final id = penggunaBaru['id_pengguna'] as int;
-
+    final id = (penggunaBaru['id_pengguna'] as num).toInt();
     await _pastikanPengaturan(id);
-
     return id;
   }
 
@@ -53,58 +58,126 @@ class SupabaseService {
     }
   }
 
-  // ==========================================
-  // STATISTIK & DATA TEMUAN (Feature 8.b)
-  // ==========================================
+  // =========================================================
+  // TEMUAN - SESUAI STRUKTUR TABEL SUPABASE NETRA
+  // =========================================================
 
-  /// Ambil statistik temuan: total, terverifikasi, belum diverkezi.
-  static Future<Map<String, int>> hitungStatistikTemuan() async {
-    // Menggunakan .select() biasa lalu menghitung length dari hasilnya.
-    // Untuk tabel besar, pastikan indeks di Supabase (status, waktu) untuk performa.
-    final totalRespon = await client.from('temuan').select('id');
-    final verifiedRespon = await client
+  /// Mengambil semua temuan dengan nama kolom asli database.
+  static Future<List<Map<String, dynamic>>> ambilSemuaTemuan({
+    int limit = 1000,
+  }) async {
+    final data = await client
         .from('temuan')
-        .select('id')
-        .eq('status', 'terverifikasi');
-    final unverifiedRespon = await client
-        .from('temuan')
-        .select('id')
-        .eq('status', 'belum_diverifikasi');
+        .select(
+          'id_temuan,id_perjalanan,id_deteksi,jenis_permasalahan,'
+          'lokasi_laporan,latitude,longitude,dokumentasi,deskripsi,'
+          'status_tindak_lanjut,waktu_temuan,status,waktu',
+        )
+        .order('waktu_temuan', ascending: false)
+        .limit(limit);
 
-    int total = 0, terverifikasi = 0, belumDiverifikasi = 0;
-
-    // Menghitung jumlah data dari hasil query Supabase
-    total = totalRespon.length;
-    terverifikasi = verifiedRespon.length;
-    belumDiverifikasi = unverifiedRespon.length;
-
-    return {
-      'total': total,
-      'terverifikasi': terverifikasi,
-      'belum_diverifikasi': belumDiverifikasi,
-    };
+    return List<Map<String, dynamic>>.from(data);
   }
 
-  /// Ambil daftar temuan terbaru (default 5 data).
+  /// Mengambil temuan terbaru untuk dashboard.
   static Future<List<Map<String, dynamic>>> ambilTemuanTerbaru({
     int limit = 5,
   }) async {
-    final respon = await client
+    final data = await client
         .from('temuan')
-        .select('id, jenis, status, waktu, lokasi')
-        .order('waktu', ascending: false)
+        .select(
+          'id_temuan,jenis_permasalahan,status_tindak_lanjut,'
+          'waktu_temuan,lokasi_laporan',
+        )
+        .order('waktu_temuan', ascending: false)
         .limit(limit);
 
-    return List<Map<String, dynamic>>.from(respon);
+    // Sertakan alias lama agar pemanggil dashboard yang masih menggunakan
+    // key id/jenis/status/waktu/lokasi tidak langsung rusak.
+    return data
+        .map(
+          (row) => <String, dynamic>{
+            ...row,
+            'id': row['id_temuan'],
+            'jenis': row['jenis_permasalahan'],
+            'status': row['status_tindak_lanjut'],
+            'waktu': row['waktu_temuan'],
+            'lokasi': row['lokasi_laporan'],
+          },
+        )
+        .toList();
   }
 
-  /// Ambil semua temuan (untuk daftar lengkap admin).
-  static Future<List<Map<String, dynamic>>> ambilSemuaTemuan() async {
-    final respon = await client
+  /// Statistik berdasarkan status_tindak_lanjut yang valid di database:
+  /// menunggu_verifikasi, terverifikasi, dan ditolak.
+  static Future<Map<String, int>> hitungStatistikTemuan() async {
+    final data = await client
         .from('temuan')
-        .select('id, jenis, status, waktu, lokasi, latitude, longitude')
-        .order('waktu', ascending: false);
+        .select('id_temuan,status_tindak_lanjut');
 
-    return List<Map<String, dynamic>>.from(respon);
+    var terverifikasi = 0;
+    var menunggu = 0;
+    var ditolak = 0;
+
+    for (final row in data) {
+      final status = (row['status_tindak_lanjut'] ?? '')
+          .toString()
+          .toLowerCase()
+          .trim();
+
+      switch (status) {
+        case 'terverifikasi':
+          terverifikasi++;
+          break;
+        case 'ditolak':
+          ditolak++;
+          break;
+        case 'menunggu_verifikasi':
+          menunggu++;
+          break;
+        default:
+          // Status kosong/tidak dikenal dihitung sebagai belum diproses,
+          // agar tidak menghilangkan temuan dari total daftar.
+          menunggu++;
+      }
+    }
+
+    return {
+      'total': data.length,
+      'terverifikasi': terverifikasi,
+      'belum_diverifikasi': menunggu,
+      'menunggu_verifikasi': menunggu,
+      'ditolak': ditolak,
+    };
+  }
+
+  /// Mengambil satu temuan berdasarkan primary key id_temuan.
+  static Future<Map<String, dynamic>> ambilDetailTemuan(int idTemuan) async {
+    final data = await client
+        .from('temuan')
+        .select(
+          'id_temuan,id_perjalanan,id_deteksi,jenis_permasalahan,'
+          'lokasi_laporan,latitude,longitude,dokumentasi,deskripsi,'
+          'status_tindak_lanjut,waktu_temuan,status,waktu',
+        )
+        .eq('id_temuan', idTemuan)
+        .single();
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  /// Mengambil riwayat verifikasi untuk satu temuan.
+  static Future<List<Map<String, dynamic>>> ambilVerifikasi(
+    int idTemuan,
+  ) async {
+    final data = await client
+        .from('verifikasi')
+        .select(
+          'id_verifikasi,id_temuan,id_admin,status,catatan,waktu_verifikasi',
+        )
+        .eq('id_temuan', idTemuan)
+        .order('waktu_verifikasi', ascending: false);
+
+    return List<Map<String, dynamic>>.from(data);
   }
 }

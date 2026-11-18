@@ -1,4 +1,3 @@
-
 import 'package:flutter/foundation.dart';
 
 // ==========================================
@@ -40,9 +39,7 @@ class DetectionService {
   static const double minimumConfidence = 0.50;
 
   // Memfilter hasil deteksi berdasarkan confidence.
-  List<ObjekTerdeteksi> filterDeteksi(
-    List<ObjekTerdeteksi> hasil,
-  ) {
+  List<ObjekTerdeteksi> filterDeteksi(List<ObjekTerdeteksi> hasil) {
     return hasil.where((objek) {
       return objek.confidence >= minimumConfidence;
     }).toList();
@@ -79,18 +76,14 @@ class DetectionService {
   }
 
   // Memilih objek dengan confidence tertinggi.
-  ObjekTerdeteksi? objekConfidenceTertinggi(
-    List<ObjekTerdeteksi> hasil,
-  ) {
+  ObjekTerdeteksi? objekConfidenceTertinggi(List<ObjekTerdeteksi> hasil) {
     final objekValid = filterDeteksi(hasil);
 
     if (objekValid.isEmpty) {
       return null;
     }
 
-    objekValid.sort(
-      (a, b) => b.confidence.compareTo(a.confidence),
-    );
+    objekValid.sort((a, b) => b.confidence.compareTo(a.confidence));
 
     return objekValid.first;
   }

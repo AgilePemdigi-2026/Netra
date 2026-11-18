@@ -98,11 +98,16 @@ void main() {
       await tester.enterText(find.byType(TextFormField).last, 'abc12345');
       await tester.pump(const Duration(milliseconds: 300));
 
-      // WHEN: Pengguna menekan Masuk
-      await tekan(tester, find.text('Masuk'));
+      // WHEN: Admin menekan tombol Done pada keyboard
+      // Sesuai onFieldSubmitted pada login_screen.dart
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // THEN: Muncul pesan format email tidak valid
-      expect(find.text('Format email tidak valid.'), findsOneWidget);
+      await tungguTeks(tester, find.text('Format email tidak valid.'));
+
+      expect(find.text('Masuk'), findsOneWidget);
 
       debugPrint('BDD-LOG-03 PASS: Format email tidak valid ditolak');
     });
@@ -163,27 +168,26 @@ void main() {
     testWidgets('BDD-LOG-06: Admin terdaftar berhasil login', (
       WidgetTester tester,
     ) async {
-      // GIVEN: Admin memasukkan email dan kata sandi yang benar
+      // GIVEN: Admin membuka halaman login
+      // dan memasukkan email serta kata sandi yang benar.
       await bukaLogin(tester);
 
       await tester.enterText(find.byType(TextFormField).first, _emailAdmin);
       await tester.enterText(find.byType(TextFormField).last, _sandiAdmin);
       await tester.pump(const Duration(milliseconds: 300));
 
-      try {
-        // WHEN: Admin menekan Masuk
-        await tekan(tester, find.text('Masuk'));
+      // WHEN: Admin menekan tombol Masuk
+      await tekan(tester, find.text('Masuk'));
 
-        // THEN: Admin masuk ke dashboard.
-        // Catatan: saat ini masih dashboard sementara. Jika dashboard
-        // asli sudah menggantikan, sesuaikan teks pengecekan ini.
-        await tungguTeks(tester, find.text('Login berhasil'), maksDetik: 25);
-        expect(find.text('Dashboard Admin (Sementara)'), findsOneWidget);
+      // THEN: Admin berhasil diarahkan ke dashboard utama
+      await tungguTeks(tester, find.text('Dashboard Utama'), maksDetik: 30);
 
-        debugPrint('BDD-LOG-06 PASS: Admin berhasil login');
-      } finally {
-        await Supabase.instance.client.auth.signOut();
-      }
+      expect(find.text('Dashboard Utama'), findsOneWidget);
+
+      debugPrint('BDD-LOG-06 PASS: Admin berhasil masuk ke dashboard');
+
+      // Membersihkan sesi login setelah pengujian
+      await Supabase.instance.client.auth.signOut();
     }, skip: !_adaAkunAdmin);
   });
 }

@@ -138,70 +138,95 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
   Future<List<TemuanItem>> _ambilDaftar() async {
     final client = SupabaseService.client;
 
-    // 1. Temuan beserta data deteksinya (akurasi & tingkat bahaya).
-    List<Map<String, dynamic>> baris;
-    try {
-      baris = await client
-          .from('temuan')
-          .select('$_kolomDasar,deteksi(akurasi_deteksi,tingkat_bahaya)')
-          .order('waktu_temuan', ascending: false)
-          .range(0, _Db.batasTemuan - 1);
-    } catch (e) {
-      // Bila relasi ke tabel deteksi tidak terbaca, ambil temuan saja.
-      debugPrint('Temuan: gagal mengambil relasi deteksi: $e');
-      baris = await client
-          .from('temuan')
-          .select(_kolomDasar)
-          .order('waktu_temuan', ascending: false)
-          .range(0, _Db.batasTemuan - 1);
+    // Ambil tabel temuan terlebih dahulu tanpa embedded relation.
+    // Ini menghindari kegagalan query akibat relasi PostgREST yang tidak
+    // dikenali/ambigu dan memastikan kolom yang dipakai sesuai skema DB.
+    final responTemuan = await client
+        .from('temuan')
+        .select(_kolomDasar)
+        .order('waktu_temuan', ascending: false)
+        .limit(_Db.batasTemuan)
+        .timeout(const Duration(seconds: 15));
+
+    final baris = List<Map<String, dynamic>>.from(responTemuan);
+    if (baris.isEmpty) return <TemuanItem>[];
+
+    // Ambil data deteksi secara terpisah agar daftar temuan tetap dapat
+    // ditampilkan walaupun data deteksi tidak tersedia.
+    final idDeteksi = baris
+        .map((row) => row['id_deteksi'])
+        .where((id) => id != null)
+        .toSet()
+        .toList();
+    final dataDeteksi = <String, Map<String, dynamic>>{};
+
+    if (idDeteksi.isNotEmpty) {
+      try {
+        final responDeteksi = await client
+            .from('deteksi')
+            .select('id_deteksi,akurasi_deteksi,tingkat_bahaya')
+            .inFilter('id_deteksi', idDeteksi)
+            .timeout(const Duration(seconds: 10));
+
+        for (final row in responDeteksi) {
+          dataDeteksi['${row['id_deteksi']}'] = Map<String, dynamic>.from(row);
+        }
+      } catch (e) {
+        // Data deteksi bukan syarat untuk menampilkan temuan.
+        debugPrint('Temuan: data deteksi tidak dapat dimuat: $e');
+      }
     }
 
-    // 2. Hasil verifikasi petugas (diambil yang terbaru untuk tiap temuan).
-    final statusVerifikasi = <String, String?>{};
+    // Ambil verifikasi hanya untuk ID temuan yang sedang ditampilkan.
+    // Jika tabel verifikasi belum dapat dibaca, gunakan status di tabel temuan.
+    final idTemuan = baris.map((row) => row['id_temuan']).toList();
+    final statusVerifikasi = <String, String>{};
+
     try {
-      final verifikasi = await client
+      final responVerifikasi = await client
           .from('verifikasi')
-          .select('id_temuan,status,waktu_verifikasi');
+          .select('id_temuan,status,waktu_verifikasi')
+          .inFilter('id_temuan', idTemuan)
+          .order('waktu_verifikasi', ascending: false)
+          .timeout(const Duration(seconds: 10));
 
-      final waktuTerbaru = <String, DateTime>{};
-      for (final v in verifikasi) {
-        final kunci = '${v['id_temuan']}';
-        final waktu =
-            DateTime.tryParse('${v['waktu_verifikasi'] ?? ''}') ??
-            DateTime.fromMillisecondsSinceEpoch(0);
-
-        final sebelumnya = waktuTerbaru[kunci];
-        if (sebelumnya == null || waktu.isAfter(sebelumnya)) {
-          waktuTerbaru[kunci] = waktu;
-          statusVerifikasi[kunci] = v['status'] as String?;
+      // Hasil sudah diurutkan terbaru lebih dulu. Simpan satu status per temuan.
+      for (final row in responVerifikasi) {
+        final id = '${row['id_temuan']}';
+        final status = row['status']?.toString();
+        if (status != null && !statusVerifikasi.containsKey(id)) {
+          statusVerifikasi[id] = status;
         }
       }
     } catch (e) {
-      debugPrint('Temuan: gagal mengambil verifikasi: $e');
+      debugPrint('Temuan: riwayat verifikasi tidak dapat dimuat: $e');
     }
 
     return baris.map((row) {
-      final deteksiMentah = row['deteksi'];
-      final deteksi = deteksiMentah is List
-          ? (deteksiMentah.isNotEmpty ? deteksiMentah.first : null)
-          : deteksiMentah;
-      final dataDeteksi = deteksi is Map ? deteksi : const {};
+      final id = row['id_temuan'];
+      final deteksi = dataDeteksi['${row['id_deteksi']}'];
 
-      var akurasi = _keDouble(dataDeteksi['akurasi_deteksi']);
-      if (akurasi != null && akurasi <= 1.0) akurasi = akurasi * 100;
+      var akurasi = _keDouble(deteksi?['akurasi_deteksi']);
+      if (akurasi != null && akurasi <= 1.0) {
+        akurasi *= 100;
+      }
 
+      // Status di tabel verifikasi menjadi prioritas. Jika belum ada,
+      // gunakan status_tindak_lanjut, lalu kolom status lama sebagai fallback.
       final status =
-          statusVerifikasi['${row['id_temuan']}'] ?? row['status'] as String?;
+          statusVerifikasi['$id'] ??
+          row['status_tindak_lanjut']?.toString() ??
+          row['status']?.toString();
 
       return TemuanItem(
-        id: int.tryParse('${row['id_temuan']}') ?? 0,
+        id: int.tryParse('$id') ?? 0,
         jenis: _teks(row['jenis_permasalahan'], '-'),
         lokasi: _teks(row['lokasi_laporan'], '-'),
-        dokumentasi: row['dokumentasi'] as String?,
-        deskripsi: row['deskripsi'] as String?,
+        dokumentasi: row['dokumentasi']?.toString(),
+        deskripsi: row['deskripsi']?.toString(),
         waktu: DateTime.tryParse('${row['waktu_temuan'] ?? ''}'),
         akurasi: akurasi,
-        tingkat: _kapital(dataDeteksi['tingkat_bahaya'] as String?),
+        tingkat: _kapital(deteksi?['tingkat_bahaya']?.toString()),
         latitude: _keDouble(row['latitude']),
         longitude: _keDouble(row['longitude']),
         status: _klasifikasi(status),
@@ -218,7 +243,7 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
     });
 
     try {
-      final hasil = await _ambilDaftar().timeout(const Duration(seconds: 20));
+      final hasil = await _ambilDaftar().timeout(const Duration(seconds: 40));
 
       if (!mounted) return;
 
