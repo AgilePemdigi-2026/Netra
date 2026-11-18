@@ -959,10 +959,9 @@ packages:
   ultralytics_yolo:
     dependency: "direct main"
     description:
-      name: ultralytics_yolo
-      sha256: "0ea34ddb7cf51e7140eb06a85c33c58bdf65c18d123d21cbab993ae231f144b3"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/ultralytics_yolo"
+      relative: true
+    source: path
     version: "0.6.16"
   url_launcher:
     dependency: transitive
