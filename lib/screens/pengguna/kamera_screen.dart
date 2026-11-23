@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -11,6 +12,7 @@ import 'package:vibration/vibration.dart';
 
 import '../../services/detection_service.dart';
 import '../../services/location_service.dart';
+import '../../services/supabase_service.dart';
 import 'laporan_perjalanan_screen.dart';
 
 class KameraScreen extends StatefulWidget {
@@ -131,6 +133,12 @@ class _KameraScreenState extends State<KameraScreen> {
   final FlutterTts _tts = FlutterTts();
   final stt.SpeechToText _speech = stt.SpeechToText();
 
+  // Controller untuk mengambil foto dari kamera YOLO yang sedang aktif.
+  late final YOLOViewController _yoloController = YOLOViewController();
+
+  // Menampung proses pengambilan foto yang belum selesai.
+  final Set<Future<void>> _prosesFotoAktif = {};
+
   bool _voiceAktif = true;
   bool _getarAktif = true;
   bool _ttsSiap = false;
@@ -177,6 +185,7 @@ class _KameraScreenState extends State<KameraScreen> {
   Timer? _timer;
 
   late final DateTime _mulaiPerjalanan;
+  late final Future<int> _perjalananIdFuture;
   Duration _durasi = Duration.zero;
 
   DateTime _waktuUI = DateTime.fromMillisecondsSinceEpoch(0);
@@ -192,6 +201,10 @@ class _KameraScreenState extends State<KameraScreen> {
     _mulaiPerjalanan = DateTime.now();
     _statusSuara = _petunjukSuara;
 
+    // Buat sesi perjalanan di Supabase. Future ini ditunggu saat
+    // pengguna mengakhiri perjalanan agar semua data punya FK yang valid.
+    _perjalananIdFuture = _buatPerjalanan();
+
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
 
@@ -202,6 +215,22 @@ class _KameraScreenState extends State<KameraScreen> {
 
     _inisialisasi();
     _aktifkanGPS();
+  }
+
+  Future<int> _buatPerjalanan() async {
+    final idPengguna = await SupabaseService.siapkanPengguna();
+
+    final hasil = await SupabaseService.client
+        .from('perjalanan')
+        .insert({
+          'id_pengguna': idPengguna,
+          'waktu_mulai': _mulaiPerjalanan.toIso8601String(),
+          // status memakai default database: aktif
+        })
+        .select('id_perjalanan')
+        .single();
+
+    return (hasil['id_perjalanan'] as num).toInt();
   }
 
   Future<void> _inisialisasi() async {
@@ -440,16 +469,22 @@ class _KameraScreenState extends State<KameraScreen> {
     return tambahan[nama.toLowerCase()] ?? _deteksi.namaObjekIndonesia(nama);
   }
 
-  void _catatRintangan(String kelas, String label, double confidence) {
+  Future<void> _catatRintangan(
+    String kelas,
+    String label,
+    double confidence,
+  ) async {
     final sekarang = DateTime.now();
     final posisi = _posisiTerakhir;
 
     final waktuLalu = _waktuRintangan[kelas];
     final posisiLalu = _posisiRintangan[kelas];
 
+    // Filter duplikasi: kelas yang sama dalam rentang 10 detik.
     if (waktuLalu != null) {
       if (sekarang.difference(waktuLalu).inSeconds < 10) return;
 
+      // Filter duplikasi: kelas yang sama pada lokasi kurang dari 5 meter.
       if (posisi != null &&
           posisiLalu != null &&
           _lokasiService.jarakMeter(posisiLalu, posisi) < 5) {
@@ -457,8 +492,13 @@ class _KameraScreenState extends State<KameraScreen> {
       }
     }
 
+    // Tandai lebih dahulu agar callback YOLO berikutnya
+    // tidak membuat pengambilan foto ganda.
     _waktuRintangan[kelas] = sekarang;
-    if (posisi != null) _posisiRintangan[kelas] = posisi;
+
+    if (posisi != null) {
+      _posisiRintangan[kelas] = posisi;
+    }
 
     String jalan = _namaJalan;
 
@@ -468,17 +508,45 @@ class _KameraScreenState extends State<KameraScreen> {
       jalan = _detailLokasi;
     }
 
-    _totalRintangan++;
+    // Simpan lokasi dan waktu saat deteksi terjadi.
+    final latitude = posisi?.latitude;
+    final longitude = posisi?.longitude;
 
+    // Ambil foto dari kamera YOLO yang sama.
+    Uint8List? fotoBytes;
+
+    try {
+      fotoBytes = await _yoloController.capturePhoto(withOverlays: true);
+
+      debugPrint(
+        fotoBytes != null
+            ? 'NETRA: Foto hambatan berhasil diambil (${fotoBytes.length} bytes).'
+            : 'NETRA: Kamera tidak menghasilkan foto.',
+      );
+    } catch (e) {
+      debugPrint('NETRA gagal mengambil foto hambatan: $e');
+    }
+
+    if (!mounted) return;
+
+    // Simpan temuan beserta foto, koordinat, dan informasi lokasi.
     _daftarTemuan.add(
       TemuanRintangan(
         jenis: label,
         confidence: confidence,
         waktu: sekarang,
         namaJalan: jalan,
-        latitude: posisi?.latitude,
-        longitude: posisi?.longitude,
+        latitude: latitude,
+        longitude: longitude,
+        fotoBytes: fotoBytes,
       ),
+    );
+
+    _totalRintangan++;
+
+    debugPrint(
+      'NETRA: Temuan $label berhasil dicatat. '
+      'Foto tersedia: ${fotoBytes != null}',
     );
   }
 
@@ -497,11 +565,17 @@ class _KameraScreenState extends State<KameraScreen> {
       final label = _kelasRintanganIndonesia[kelas];
 
       if (label != null) {
-        _catatRintangan(
+        final proses = _catatRintangan(
           kelas,
           _english ? _kelasRintanganEnglish[kelas]! : label,
           hasil.confidence,
         );
+
+        _prosesFotoAktif.add(proses);
+
+        proses.whenComplete(() {
+          _prosesFotoAktif.remove(proses);
+        });
       }
     }
 
@@ -690,15 +764,47 @@ class _KameraScreenState extends State<KameraScreen> {
     await _langgananGPS?.cancel();
     _langgananGPS = null;
 
-    if (!mounted) return;
+    try {
+      // Tunggu pengambilan foto yang masih berlangsung.
+      if (_prosesFotoAktif.isNotEmpty) {
+        await Future.wait(_prosesFotoAktif.toList());
+      }
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => LaporanPerjalananScreen(
-          temuan: List<TemuanRintangan>.unmodifiable(_daftarTemuan),
+      final idPerjalanan = await _perjalananIdFuture;
+
+      await SupabaseService.client
+          .from('perjalanan')
+          .update({
+            'waktu_selesai': DateTime.now().toIso8601String(),
+            'status': 'selesai',
+          })
+          .eq('id_perjalanan', idPerjalanan);
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => LaporanPerjalananScreen(
+            temuan: List<TemuanRintangan>.unmodifiable(_daftarTemuan),
+            idPerjalanan: idPerjalanan,
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      debugPrint('NETRA simpan perjalanan: $e');
+
+      if (!mounted) return;
+
+      _sedangMengakhiri = false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Perjalanan gagal disimpan ke server. Periksa koneksi dan coba lagi.\n$e',
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
   }
 
   Future<void> _tekanUntukBerbicara() async {
@@ -813,6 +919,9 @@ class _KameraScreenState extends State<KameraScreen> {
     _speech.stop();
     _voiceAktif = false;
     _tts.stop();
+
+    _yoloController.dispose();
+
     super.dispose();
   }
 
@@ -893,6 +1002,7 @@ class _KameraScreenState extends State<KameraScreen> {
                         children: [
                           Positioned.fill(
                             child: YOLOView(
+                              controller: _yoloController,
                               modelPath: _model,
                               secondaryModelPath: _secondaryModel,
                               onResult: _prosesDeteksi,

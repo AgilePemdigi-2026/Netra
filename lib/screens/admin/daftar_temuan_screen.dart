@@ -13,7 +13,7 @@ import 'verifikasi_screen.dart';
 class _Db {
   /// Nama bucket Supabase Storage tempat foto dokumentasi disimpan.
   /// Dipakai kalau kolom `dokumentasi` berisi path, bukan URL lengkap.
-  static const String bucketDokumentasi = 'dokumentasi';
+  static const String bucketDokumentasi = 'dokumentasi-temuan';
 
   /// Jumlah maksimum temuan yang dimuat sekaligus (terbaru lebih dulu).
   static const int batasTemuan = 1000;
@@ -138,95 +138,70 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
   Future<List<TemuanItem>> _ambilDaftar() async {
     final client = SupabaseService.client;
 
-    // Ambil tabel temuan terlebih dahulu tanpa embedded relation.
-    // Ini menghindari kegagalan query akibat relasi PostgREST yang tidak
-    // dikenali/ambigu dan memastikan kolom yang dipakai sesuai skema DB.
-    final responTemuan = await client
-        .from('temuan')
-        .select(_kolomDasar)
-        .order('waktu_temuan', ascending: false)
-        .limit(_Db.batasTemuan)
-        .timeout(const Duration(seconds: 15));
-
-    final baris = List<Map<String, dynamic>>.from(responTemuan);
-    if (baris.isEmpty) return <TemuanItem>[];
-
-    // Ambil data deteksi secara terpisah agar daftar temuan tetap dapat
-    // ditampilkan walaupun data deteksi tidak tersedia.
-    final idDeteksi = baris
-        .map((row) => row['id_deteksi'])
-        .where((id) => id != null)
-        .toSet()
-        .toList();
-    final dataDeteksi = <String, Map<String, dynamic>>{};
-
-    if (idDeteksi.isNotEmpty) {
-      try {
-        final responDeteksi = await client
-            .from('deteksi')
-            .select('id_deteksi,akurasi_deteksi,tingkat_bahaya')
-            .inFilter('id_deteksi', idDeteksi)
-            .timeout(const Duration(seconds: 10));
-
-        for (final row in responDeteksi) {
-          dataDeteksi['${row['id_deteksi']}'] = Map<String, dynamic>.from(row);
-        }
-      } catch (e) {
-        // Data deteksi bukan syarat untuk menampilkan temuan.
-        debugPrint('Temuan: data deteksi tidak dapat dimuat: $e');
-      }
+    // 1. Temuan beserta data deteksinya (akurasi & tingkat bahaya).
+    List<Map<String, dynamic>> baris;
+    try {
+      baris = await client
+          .from('temuan')
+          .select('$_kolomDasar,deteksi(akurasi_deteksi,tingkat_bahaya)')
+          .order('waktu_temuan', ascending: false)
+          .range(0, _Db.batasTemuan - 1);
+    } catch (e) {
+      // Bila relasi ke tabel deteksi tidak terbaca, ambil temuan saja.
+      debugPrint('Temuan: gagal mengambil relasi deteksi: $e');
+      baris = await client
+          .from('temuan')
+          .select(_kolomDasar)
+          .order('waktu_temuan', ascending: false)
+          .range(0, _Db.batasTemuan - 1);
     }
 
-    // Ambil verifikasi hanya untuk ID temuan yang sedang ditampilkan.
-    // Jika tabel verifikasi belum dapat dibaca, gunakan status di tabel temuan.
-    final idTemuan = baris.map((row) => row['id_temuan']).toList();
-    final statusVerifikasi = <String, String>{};
-
+    // 2. Hasil verifikasi petugas (diambil yang terbaru untuk tiap temuan).
+    final statusVerifikasi = <String, String?>{};
     try {
-      final responVerifikasi = await client
+      final verifikasi = await client
           .from('verifikasi')
-          .select('id_temuan,status,waktu_verifikasi')
-          .inFilter('id_temuan', idTemuan)
-          .order('waktu_verifikasi', ascending: false)
-          .timeout(const Duration(seconds: 10));
+          .select('id_temuan,status,waktu_verifikasi');
 
-      // Hasil sudah diurutkan terbaru lebih dulu. Simpan satu status per temuan.
-      for (final row in responVerifikasi) {
-        final id = '${row['id_temuan']}';
-        final status = row['status']?.toString();
-        if (status != null && !statusVerifikasi.containsKey(id)) {
-          statusVerifikasi[id] = status;
+      final waktuTerbaru = <String, DateTime>{};
+      for (final v in verifikasi) {
+        final kunci = '${v['id_temuan']}';
+        final waktu =
+            DateTime.tryParse('${v['waktu_verifikasi'] ?? ''}') ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+
+        final sebelumnya = waktuTerbaru[kunci];
+        if (sebelumnya == null || waktu.isAfter(sebelumnya)) {
+          waktuTerbaru[kunci] = waktu;
+          statusVerifikasi[kunci] = v['status'] as String?;
         }
       }
     } catch (e) {
-      debugPrint('Temuan: riwayat verifikasi tidak dapat dimuat: $e');
+      debugPrint('Temuan: gagal mengambil verifikasi: $e');
     }
 
     return baris.map((row) {
-      final id = row['id_temuan'];
-      final deteksi = dataDeteksi['${row['id_deteksi']}'];
+      final deteksiMentah = row['deteksi'];
+      final deteksi = deteksiMentah is List
+          ? (deteksiMentah.isNotEmpty ? deteksiMentah.first : null)
+          : deteksiMentah;
+      final dataDeteksi = deteksi is Map ? deteksi : const {};
 
-      var akurasi = _keDouble(deteksi?['akurasi_deteksi']);
-      if (akurasi != null && akurasi <= 1.0) {
-        akurasi *= 100;
-      }
+      var akurasi = _keDouble(dataDeteksi['akurasi_deteksi']);
+      if (akurasi != null && akurasi <= 1.0) akurasi = akurasi * 100;
 
-      // Status di tabel verifikasi menjadi prioritas. Jika belum ada,
-      // gunakan status_tindak_lanjut, lalu kolom status lama sebagai fallback.
       final status =
-          statusVerifikasi['$id'] ??
-          row['status_tindak_lanjut']?.toString() ??
-          row['status']?.toString();
+          statusVerifikasi['${row['id_temuan']}'] ?? row['status'] as String?;
 
       return TemuanItem(
-        id: int.tryParse('$id') ?? 0,
+        id: int.tryParse('${row['id_temuan']}') ?? 0,
         jenis: _teks(row['jenis_permasalahan'], '-'),
         lokasi: _teks(row['lokasi_laporan'], '-'),
-        dokumentasi: row['dokumentasi']?.toString(),
-        deskripsi: row['deskripsi']?.toString(),
+        dokumentasi: row['dokumentasi'] as String?,
+        deskripsi: row['deskripsi'] as String?,
         waktu: DateTime.tryParse('${row['waktu_temuan'] ?? ''}'),
         akurasi: akurasi,
-        tingkat: _kapital(deteksi?['tingkat_bahaya']?.toString()),
+        tingkat: _kapital(dataDeteksi['tingkat_bahaya'] as String?),
         latitude: _keDouble(row['latitude']),
         longitude: _keDouble(row['longitude']),
         status: _klasifikasi(status),
@@ -243,7 +218,7 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
     });
 
     try {
-      final hasil = await _ambilDaftar().timeout(const Duration(seconds: 40));
+      final hasil = await _ambilDaftar().timeout(const Duration(seconds: 20));
 
       if (!mounted) return;
 
@@ -343,18 +318,29 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
   /// Bisa berupa URL lengkap, atau path di Supabase Storage.
   static String? _urlFoto(String? dokumentasi) {
     final teks = dokumentasi?.trim() ?? '';
-    if (teks.isEmpty) return null;
+
+    debugPrint('NETRA FOTO - Path database: $teks');
+
+    if (teks.isEmpty) {
+      debugPrint('NETRA FOTO - Path dokumentasi kosong');
+      return null;
+    }
 
     if (teks.startsWith('http://') || teks.startsWith('https://')) {
+      debugPrint('NETRA FOTO - Menggunakan URL langsung: $teks');
       return teks;
     }
 
     try {
-      return SupabaseService.client.storage
+      final url = SupabaseService.client.storage
           .from(_Db.bucketDokumentasi)
           .getPublicUrl(teks);
+
+      debugPrint('NETRA FOTO - URL hasil generate: $url');
+
+      return url;
     } catch (e) {
-      debugPrint('Temuan: gagal membuat URL foto: $e');
+      debugPrint('NETRA FOTO - Gagal membuat URL: $e');
       return null;
     }
   }
@@ -383,14 +369,18 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
   int _jumlah(StatusTemuan status) =>
       _semua.where((t) => t.status == status).length;
 
-  void _bukaDetail(TemuanItem temuan) {
-    // Sudah diverifikasi/ditolak -> halaman Riwayat Verifikasi.
-    // Masih menunggu -> halaman Detail Temuan (untuk diverifikasi).
+  Future<void> _bukaDetail(TemuanItem temuan) async {
     final Widget halaman = temuan.sudahDiproses
         ? RiwayatVerifikasiScreen(idTemuanFokus: temuan.id)
         : _DetailTemuanSementara(temuan: temuan);
 
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => halaman));
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => halaman));
+
+    if (!mounted) return;
+
+    await _muat();
   }
 
   // ---------------------------------------------------------------------------
@@ -847,8 +837,12 @@ class _KartuTemuan extends StatelessWidget {
                     ),
                   );
                 },
-                errorBuilder: (context, error, stackTrace) =>
-                    _penggantiFoto('Foto tidak dapat dimuat'),
+                errorBuilder: (context, error, stackTrace) {
+                  debugPrint('NETRA FOTO - Gagal menampilkan gambar: $error');
+                  debugPrint('NETRA FOTO - Stack trace: $stackTrace');
+
+                  return _penggantiFoto('Foto tidak dapat dimuat');
+                },
               ),
             Positioned(
               left: 8,

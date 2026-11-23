@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Satu temuan hambatan yang terdeteksi selama perjalanan.
 class TemuanRintangan {
@@ -15,6 +17,9 @@ class TemuanRintangan {
   final double? longitude;
   final String namaJalan;
 
+  /// Foto hasil tangkapan kamera YOLO dalam bentuk bytes.
+  final Uint8List? fotoBytes;
+
   const TemuanRintangan({
     required this.jenis,
     required this.confidence,
@@ -22,6 +27,7 @@ class TemuanRintangan {
     required this.namaJalan,
     this.latitude,
     this.longitude,
+    this.fotoBytes,
   });
 
   String get akurasiTeks =>
@@ -30,8 +36,13 @@ class TemuanRintangan {
 
 class LaporanPerjalananScreen extends StatefulWidget {
   final List<TemuanRintangan> temuan;
+  final int idPerjalanan;
 
-  const LaporanPerjalananScreen({super.key, required this.temuan});
+  const LaporanPerjalananScreen({
+    super.key,
+    required this.temuan,
+    required this.idPerjalanan,
+  });
 
   @override
   State<LaporanPerjalananScreen> createState() =>
@@ -76,7 +87,6 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
   }
 
   Future<void> _mulai() async {
-    // Ambil bahasa yang sudah disimpan dari halaman Pengaturan.
     final prefs = await SharedPreferences.getInstance();
     _bahasa = prefs.getString('netra_bahasa') ?? 'id-ID';
 
@@ -279,8 +289,6 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
 
         if (!result.finalResult) return;
 
-        // Perintah negatif dicek lebih dahulu.
-        // Contoh: "tidak mau kirim" tidak boleh dianggap sebagai perintah kirim.
         final tidak = _bahasaInggris
             ? kata == 'no' ||
                   kata.startsWith('no ') ||
@@ -351,6 +359,65 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
     _kembaliKeBeranda();
   }
 
+  String _tingkatBahaya(String jenis) {
+    final nama = jenis.toLowerCase();
+
+    if (nama.contains('lubang') ||
+        nama.contains('manhole') ||
+        nama.contains('pothole')) {
+      return 'tinggi';
+    }
+
+    return 'sedang';
+  }
+
+  /// Upload foto temuan ke Supabase Storage.
+  ///
+  /// Hasilnya adalah path file yang nantinya disimpan pada kolom
+  /// `dokumentasi` di tabel `temuan`.
+
+  Future<String?> _uploadFoto(SupabaseClient client, TemuanRintangan t) async {
+    final bytes = t.fotoBytes;
+
+    if (bytes == null || bytes.isEmpty) {
+      debugPrint('NETRA: Temuan ${t.jenis} tidak memiliki foto.');
+      return null;
+    }
+
+    // Ambil ID pengguna yang sedang login.
+    final user = client.auth.currentUser;
+
+    if (user == null) {
+      throw Exception(
+        'Pengguna belum login ke Supabase. Tidak dapat upload foto.',
+      );
+    }
+
+    // Folder pertama harus sama dengan auth.uid()
+    // sesuai aturan Storage Policy Supabase.
+    final namaFile =
+        '${user.id}/'
+        'perjalanan_${widget.idPerjalanan}/'
+        'temuan_${t.waktu.microsecondsSinceEpoch}.jpg';
+
+    debugPrint('NETRA: Mulai upload foto: $namaFile');
+
+    await client.storage
+        .from('dokumentasi-temuan')
+        .uploadBinary(
+          namaFile,
+          bytes,
+          fileOptions: const FileOptions(
+            contentType: 'image/jpeg',
+            upsert: false,
+          ),
+        );
+
+    debugPrint('NETRA: Foto berhasil diunggah: $namaFile');
+
+    return namaFile;
+  }
+
   Future<void> _kirim() async {
     if (!_adaTemuan || _mengirim) return;
 
@@ -364,10 +431,62 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
     });
 
     try {
-      // TODO: kirim widget.temuan ke server / Firebase / API Dinas Sosial.
-      await Future.delayed(const Duration(milliseconds: 900));
-    } catch (e) {
-      debugPrint('NETRA kirim laporan: $e');
+      final client = Supabase.instance.client;
+
+      int jumlahFotoBerhasil = 0;
+
+      for (final t in widget.temuan) {
+        // 1. Upload foto terlebih dahulu jika tersedia.
+        final pathFoto = await _uploadFoto(client, t);
+
+        if (pathFoto != null) {
+          jumlahFotoBerhasil++;
+        }
+
+        // 2. Simpan hasil deteksi.
+        final hasilDeteksi = await client
+            .from('deteksi')
+            .insert({
+              'id_perjalanan': widget.idPerjalanan,
+              'id_fasilitas': null,
+              'jenis_objek': t.jenis,
+              'tingkat_bahaya': _tingkatBahaya(t.jenis),
+              'akurasi_deteksi': t.confidence,
+              'latitude': t.latitude,
+              'longitude': t.longitude,
+              'waktu_deteksi': t.waktu.toIso8601String(),
+            })
+            .select('id_deteksi')
+            .single();
+
+        final int idDeteksi = (hasilDeteksi['id_deteksi'] as num).toInt();
+
+        // 3. Simpan laporan temuan beserta path foto.
+        await client.from('temuan').insert({
+          'id_perjalanan': widget.idPerjalanan,
+          'id_deteksi': idDeteksi,
+          'jenis_permasalahan': t.jenis,
+          'lokasi_laporan': t.namaJalan,
+          'latitude': t.latitude,
+          'longitude': t.longitude,
+          'deskripsi': 'Akurasi deteksi: ${t.akurasiTeks}',
+          'status_tindak_lanjut': 'menunggu_verifikasi',
+          'status': 'belum_diverifikasi',
+          'waktu_temuan': t.waktu.toIso8601String(),
+          'waktu': t.waktu.toIso8601String(),
+
+          // Kolom ini menyimpan path foto dari bucket dokumentasi.
+          'dokumentasi': pathFoto,
+        });
+      }
+
+      debugPrint(
+        'NETRA: ${widget.temuan.length} laporan tersimpan, '
+        '$jumlahFotoBerhasil foto berhasil diunggah.',
+      );
+    } catch (e, stackTrace) {
+      debugPrint('NETRA GAGAL KIRIM LAPORAN: $e');
+      debugPrint('NETRA STACK TRACE: $stackTrace');
       if (!mounted) return;
 
       setState(() => _mengirim = false);
@@ -376,8 +495,8 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
         SnackBar(
           content: Text(
             _teks(
-              'Laporan gagal dikirim. Coba lagi.',
-              'Failed to send the report. Please try again.',
+              'Laporan gagal dikirim. Periksa koneksi dan konfigurasi Supabase Storage, lalu coba lagi.',
+              'Failed to send the report. Check your connection and Supabase Storage configuration, then try again.',
             ),
           ),
         ),
@@ -495,9 +614,6 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
     } catch (e) {
       debugPrint('NETRA laporan berhasil: $e');
     }
-
-    await Future.delayed(const Duration(milliseconds: 1200));
-    _kembaliKeBeranda();
   }
 
   @override
@@ -741,6 +857,37 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
               ],
             ),
           ),
+          if (t.fotoBytes != null && t.fotoBytes!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.memory(
+                t.fotoBytes!,
+                width: double.infinity,
+                height: 150,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return const SizedBox(
+                    height: 60,
+                    child: Center(child: Text('Foto tidak dapat ditampilkan')),
+                  );
+                },
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 8),
+            const Padding(
+              padding: EdgeInsets.only(left: 14),
+              child: Text(
+                'Foto belum tersedia',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF858B98),
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
