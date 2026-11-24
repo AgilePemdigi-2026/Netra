@@ -1620,8 +1620,20 @@ class YOLOView @JvmOverloads constructor(
     private inner class OverlayView(context: Context) : View(context) {
         private val paint = Paint().apply { isAntiAlias = true }
 
-        private fun labelText(name: String, confidence: Float) =
-            "$name ${"%.1f".format(confidence * 100)}"
+        private fun labelText(name: String, confidence: Float): String {
+    val namaIndonesia = when (name.trim().lowercase()) {
+        "losa-agrietada" -> "Jalan rusak"
+        "losa-agritada" -> "Jalan rusak"
+        "pothole" -> "Jalan berlubang"
+        "damaged_sidewalk" -> "Trotoar rusak"
+        "open_manhole" -> "Lubang drainase terbuka"
+        "stairs" -> "Tangga"
+        "pole" -> "Tiang"
+        else -> name
+    }
+
+    return "$namaIndonesia ${"%.1f".format(confidence * 100)}"
+}
 
         private fun colorFor(index: Int, confidence: Float): Int {
             val alpha = (confidence * 255).toInt().coerceIn((0.6f * 255).toInt(), 255)
