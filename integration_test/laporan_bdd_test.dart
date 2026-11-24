@@ -24,7 +24,7 @@ void main() {
                         context,
                         MaterialPageRoute(
                           builder: (_) =>
-                              LaporanPerjalananScreen(temuan: temuan),
+                              LaporanPerjalananScreen(temuan: temuan, idPerjalanan: 1),
                         ),
                       );
                     },

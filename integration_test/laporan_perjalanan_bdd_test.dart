@@ -45,7 +45,7 @@ Future<void> bukaLaporan(
                 ElevatedButton(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => LaporanPerjalananScreen(temuan: temuan),
+                      builder: (_) => LaporanPerjalananScreen(temuan: temuan, idPerjalanan: 1),
                     ),
                   ),
                   child: const Text('Buka Laporan'),

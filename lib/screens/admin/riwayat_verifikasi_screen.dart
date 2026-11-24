@@ -13,7 +13,7 @@ class _Db {
   /// Nama bucket Supabase Storage tempat foto dokumentasi disimpan.
   /// Dipakai kalau kolom `dokumentasi` berisi path, bukan URL lengkap.
   /// Samakan dengan nilai di daftar_temuan_screen.dart.
-  static const String bucketDokumentasi = 'dokumentasi';
+  static const String bucketDokumentasi = 'dokumentasi-temuan';
 
   /// Jumlah maksimum riwayat yang dimuat (terbaru lebih dulu).
   static const int batasRiwayat = 300;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Menunggu sampai [finder] muncul (maksimal [maksDetik] detik).
 Future<void> tungguTeks(
@@ -30,4 +31,17 @@ Future<void> tekan(WidgetTester tester, Finder finder) async {
 Future<void> tutupLayar(WidgetTester tester, {int detik = 1}) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump(Duration(seconds: detik));
+}
+
+// Inisialisasi bersama agar suite Login Admin dan Dashboard Admin
+// dapat dijalankan dalam satu proses tanpa memanggil Supabase.initialize dua kali.
+bool _supabaseSudahDiinisialisasi = false;
+
+Future<void> inisialisasiSupabaseSekali({
+  required String url,
+  required String publishableKey,
+}) async {
+  if (_supabaseSudahDiinisialisasi) return;
+  await Supabase.initialize(url: url, publishableKey: publishableKey);
+  _supabaseSudahDiinisialisasi = true;
 }

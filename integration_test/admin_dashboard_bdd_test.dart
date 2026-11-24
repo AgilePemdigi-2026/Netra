@@ -45,10 +45,9 @@ Future<void> bukaTabTemuan(WidgetTester tester) async {
 Future<void> bukaDetailTemuan(WidgetTester tester) async {
   await bukaTabTemuan(tester);
 
-  // Memastikan data pengujian tersedia.
-  await tungguTeks(tester, find.text('Jalan Rusak'));
-
+  // Tunggu kartu temuan yang benar-benar dimuat dari Supabase.
   final tombolDetail = find.text('Lihat Detail');
+  await tungguTeks(tester, tombolDetail);
 
   expect(
     tombolDetail,
@@ -74,7 +73,10 @@ void main() {
       throw Exception('Konfigurasi Supabase atau akun admin belum lengkap.');
     }
 
-    await Supabase.initialize(url: _supabaseUrl, publishableKey: _supabaseKey);
+    await inisialisasiSupabaseSekali(
+      url: _supabaseUrl,
+      publishableKey: _supabaseKey,
+    );
 
     await loginAdmin();
   });
@@ -150,13 +152,13 @@ void main() {
       // GIVEN: Admin membuka daftar temuan
       await bukaTabTemuan(tester);
 
-      // THEN: Data temuan pengujian ditampilkan
-      await tungguTeks(tester, find.text('Jalan Rusak'));
-
-      expect(find.text('Jalan Rusak'), findsOneWidget);
+      // THEN: Minimal satu temuan yang menunggu verifikasi ditampilkan.
+      final tombolDetail = find.text('Lihat Detail');
+      await tungguTeks(tester, tombolDetail);
+      expect(tombolDetail, findsWidgets);
 
       // WHEN: Admin memilih Lihat Detail
-      await tekan(tester, find.text('Lihat Detail').first);
+      await tekan(tester, tombolDetail.first);
 
       await tester.pumpAndSettle();
 
@@ -191,16 +193,15 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // THEN: Sistem memberikan respons
-      expect(
-        find.text(
-          'Halaman Verifikasi Temuan akan dihubungkan pada langkah berikutnya.',
-        ),
-        findsOneWidget,
-      );
+      // THEN: Halaman verifikasi yang sesungguhnya ditampilkan.
+      expect(find.text('Verifikasi Temuan'), findsOneWidget);
+      expect(find.text('Validasi Temuan Lapangan'), findsOneWidget);
+      expect(find.text('Konfirmasi Verifikasi'), findsOneWidget);
+      expect(find.text('Tolak Temuan'), findsOneWidget);
+      expect(find.text('Konfirmasi Penolakan'), findsOneWidget);
 
       debugPrint(
-        'BDD-ADM-K-01 PASS: Tombol Proses Verifikasi memberikan respons',
+        'BDD-ADM-K-01 PASS: Halaman verifikasi berhasil dibuka',
       );
     });
   });
