@@ -63,7 +63,7 @@ void main() {
       expect(find.textContaining('95,00%'), findsOneWidget);
       expect(find.text('Jalan Pemuda'), findsOneWidget);
 
-      print('BDD-LAP-01 PASS');
+      debugPrint('BDD-LAP-01 PASS');
     });
 
     testWidgets('BDD-LAP-02 - Menampilkan kondisi tanpa temuan', (
@@ -75,7 +75,7 @@ void main() {
       expect(find.text('Kirim'), findsOneWidget);
       expect(find.text('Tidak'), findsWidgets);
 
-      print('BDD-LAP-02 PASS');
+      debugPrint('BDD-LAP-02 PASS');
     });
 
     testWidgets('BDD-LAP-03 - Membatalkan pengiriman laporan', (tester) async {
@@ -86,7 +86,7 @@ void main() {
 
       expect(find.text('Buka Laporan'), findsOneWidget);
 
-      print('BDD-LAP-03 PASS');
+      debugPrint('BDD-LAP-03 PASS');
     });
 
     testWidgets('BDD-LAP-04 - Mengirim laporan perjalanan', (tester) async {
@@ -99,7 +99,7 @@ void main() {
       expect(find.text('Berhasil Terkirim'), findsOneWidget);
       expect(find.text('Kembali ke Beranda'), findsOneWidget);
 
-      print('BDD-LAP-04 PASS');
+      debugPrint('BDD-LAP-04 PASS');
     });
   });
 }

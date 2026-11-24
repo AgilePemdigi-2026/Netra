@@ -45,7 +45,14 @@ Future<void> bukaLaporan(
                 ElevatedButton(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => LaporanPerjalananScreen(temuan: temuan, idPerjalanan: 1),
+                      builder: (_) => LaporanPerjalananScreen(
+                        temuan: temuan,
+                        idPerjalanan: 1,
+                        onKirimLaporan: (_, _) async {
+                          // Fake repository: BDD ini menguji alur UI,
+                          // bukan integrasi jaringan Supabase.
+                        },
+                      ),
                     ),
                   ),
                   child: const Text('Buka Laporan'),

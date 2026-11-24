@@ -12,7 +12,13 @@ Future<void> bukaKamera(WidgetTester tester) async {
   SharedPreferences.setMockInitialValues({});
 
   await tester.pumpWidget(
-    const MaterialApp(debugShowCheckedModeBanner: false, home: KameraScreen()),
+    MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: KameraScreen(
+        buatPerjalanan: (_) async => 1,
+        simpanPerjalanan: (_, _) async {},
+      ),
+    ),
   );
 
   await tungguTeks(tester, find.text('Perjalanan Aktif'));

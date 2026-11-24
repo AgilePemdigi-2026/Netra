@@ -16,7 +16,17 @@ import '../../services/supabase_service.dart';
 import 'laporan_perjalanan_screen.dart';
 
 class KameraScreen extends StatefulWidget {
-  const KameraScreen({super.key});
+  /// Callback opsional untuk mengganti penyimpanan perjalanan pada pengujian.
+  /// Jika tidak diberikan, aplikasi tetap menggunakan Supabase seperti biasa.
+  final Future<int> Function(DateTime waktuMulai)? buatPerjalanan;
+  final Future<void> Function(int idPerjalanan, DateTime waktuSelesai)?
+      simpanPerjalanan;
+
+  const KameraScreen({
+    super.key,
+    this.buatPerjalanan,
+    this.simpanPerjalanan,
+  });
 
   @override
   State<KameraScreen> createState() => _KameraScreenState();
@@ -218,6 +228,11 @@ class _KameraScreenState extends State<KameraScreen> {
   }
 
   Future<int> _buatPerjalanan() async {
+    final callbackPengujian = widget.buatPerjalanan;
+    if (callbackPengujian != null) {
+      return callbackPengujian(_mulaiPerjalanan);
+    }
+
     final idPengguna = await SupabaseService.siapkanPengguna();
 
     final hasil = await SupabaseService.client
@@ -772,13 +787,18 @@ class _KameraScreenState extends State<KameraScreen> {
 
       final idPerjalanan = await _perjalananIdFuture;
 
-      await SupabaseService.client
-          .from('perjalanan')
-          .update({
-            'waktu_selesai': DateTime.now().toIso8601String(),
-            'status': 'selesai',
-          })
-          .eq('id_perjalanan', idPerjalanan);
+      final callbackPengujian = widget.simpanPerjalanan;
+      if (callbackPengujian != null) {
+        await callbackPengujian(idPerjalanan, DateTime.now());
+      } else {
+        await SupabaseService.client
+            .from('perjalanan')
+            .update({
+              'waktu_selesai': DateTime.now().toIso8601String(),
+              'status': 'selesai',
+            })
+            .eq('id_perjalanan', idPerjalanan);
+      }
 
       if (!mounted) return;
 
