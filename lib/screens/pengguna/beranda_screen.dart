@@ -155,7 +155,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
                         Row(
                           children: [
                             Image.asset(
-                              'assets/images/dinsos.png',
+                              'assets/images/dpu.png',
                               width: 32,
                               height: 32,
                               fit: BoxFit.contain,

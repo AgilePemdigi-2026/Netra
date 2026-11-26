@@ -443,7 +443,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Row(
         children: [
           Image.asset(
-            'assets/images/dinsos.png',
+            'assets/images/dpu.png',
             width: 22,
             height: 22,
             fit: BoxFit.contain,
