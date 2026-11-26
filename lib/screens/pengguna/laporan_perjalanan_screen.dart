@@ -38,10 +38,16 @@ class LaporanPerjalananScreen extends StatefulWidget {
   final List<TemuanRintangan> temuan;
   final int idPerjalanan;
 
+  /// Callback opsional untuk menguji alur kirim tanpa menghubungi server.
+  /// Pada aplikasi normal, callback ini tidak diberikan dan Supabase dipakai.
+  final Future<void> Function(List<TemuanRintangan> temuan, int idPerjalanan)?
+      onKirimLaporan;
+
   const LaporanPerjalananScreen({
     super.key,
     required this.temuan,
     required this.idPerjalanan,
+    this.onKirimLaporan,
   });
 
   @override
@@ -431,11 +437,20 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
     });
 
     try {
-      final client = Supabase.instance.client;
+      final callbackPengujian = widget.onKirimLaporan;
+      if (callbackPengujian != null) {
+        // Callback ini hanya dipasang oleh BDD untuk mensimulasikan
+        // repository berhasil. Pengiriman ke server tidak diuji di sini.
+        await callbackPengujian(
+          List<TemuanRintangan>.unmodifiable(widget.temuan),
+          widget.idPerjalanan,
+        );
+      } else {
+        final client = Supabase.instance.client;
 
-      int jumlahFotoBerhasil = 0;
+        int jumlahFotoBerhasil = 0;
 
-      for (final t in widget.temuan) {
+        for (final t in widget.temuan) {
         // 1. Upload foto terlebih dahulu jika tersedia.
         final pathFoto = await _uploadFoto(client, t);
 
@@ -480,10 +495,11 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
         });
       }
 
-      debugPrint(
-        'NETRA: ${widget.temuan.length} laporan tersimpan, '
-        '$jumlahFotoBerhasil foto berhasil diunggah.',
-      );
+        debugPrint(
+          'NETRA: ${widget.temuan.length} laporan tersimpan, '
+          '$jumlahFotoBerhasil foto berhasil diunggah.',
+        );
+      }
     } catch (e, stackTrace) {
       debugPrint('NETRA GAGAL KIRIM LAPORAN: $e');
       debugPrint('NETRA STACK TRACE: $stackTrace');

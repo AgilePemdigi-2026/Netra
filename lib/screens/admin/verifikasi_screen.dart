@@ -12,6 +12,7 @@ import 'url_foto_privat.dart';
 // KONFIGURASI
 // =============================================================================
 class _Db {
+
   /// Nilai kolom `status` yang disimpan ke tabel `verifikasi` dan `temuan`.
   static const String statusDiterima = 'terverifikasi';
   static const String statusDitolak = 'ditolak';

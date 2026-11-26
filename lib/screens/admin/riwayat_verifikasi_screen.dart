@@ -12,6 +12,7 @@ import 'url_foto_privat.dart';
 // KONFIGURASI
 // =============================================================================
 class _Db {
+
   /// Jumlah maksimum riwayat yang dimuat (terbaru lebih dulu).
   static const int batasRiwayat = 300;
 }
