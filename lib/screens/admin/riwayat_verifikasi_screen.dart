@@ -5,15 +5,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/supabase_service.dart';
+import 'hapus_screen.dart'; // hapusTemuan()
+import 'url_foto_privat.dart';
 
 // =============================================================================
 // KONFIGURASI
 // =============================================================================
 class _Db {
-  /// Nama bucket Supabase Storage tempat foto dokumentasi disimpan.
-  /// Dipakai kalau kolom `dokumentasi` berisi path, bukan URL lengkap.
-  /// Samakan dengan nilai di daftar_temuan_screen.dart.
-  static const String bucketDokumentasi = 'dokumentasi-temuan';
 
   /// Jumlah maksimum riwayat yang dimuat (terbaru lebih dulu).
   static const int batasRiwayat = 300;
@@ -52,6 +50,11 @@ class _RiwayatItem {
   });
 
   bool get punyaPeta => latitude != null && longitude != null;
+
+  /// Temuan boleh dihapus hanya bila sudah diputuskan petugas.
+  bool get bolehDihapus =>
+      hasil == _HasilVerifikasi.terverifikasi ||
+      hasil == _HasilVerifikasi.ditolak;
 
   /// "Sekitar Stasiun Gubeng, Surabaya" -> "Stasiun Gubeng"
   String get namaLokasi {
@@ -95,6 +98,9 @@ class _RiwayatVerifikasiScreenState extends State<RiwayatVerifikasiScreen> {
   bool _memuat = false;
   bool _sudahGulir = false;
   String? _galat;
+
+  /// ID temuan yang sedang dalam proses penghapusan (untuk indikator kartu).
+  final Set<int> _sedangDihapus = <int>{};
 
   @override
   void initState() {
@@ -275,6 +281,41 @@ class _RiwayatVerifikasiScreenState extends State<RiwayatVerifikasiScreen> {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // HAPUS TEMUAN
+  // ---------------------------------------------------------------------------
+
+  /// Memanggil `hapusTemuan()` (hapus_screen.dart) untuk satu kartu.
+  /// Dialog konfirmasi, RPC, penghapusan foto, dan notifikasi ditangani
+  /// oleh fungsi tersebut; di sini hanya indikator kartu dan refresh daftar.
+  Future<void> _hapus(_RiwayatItem item) async {
+    if (!item.bolehDihapus || _sedangDihapus.contains(item.idTemuan)) return;
+
+    final berhasil = await hapusTemuan(
+      context: context,
+      id: item.idTemuan,
+      jenis: item.jenis,
+      dokumentasi: item.dokumentasi,
+      onMulai: () {
+        if (!mounted) return;
+        setState(() => _sedangDihapus.add(item.idTemuan));
+      },
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _sedangDihapus.remove(item.idTemuan);
+      if (berhasil) {
+        // Hilangkan kartu seketika agar terasa responsif.
+        _daftar = _daftar.where((e) => e.idTemuan != item.idTemuan).toList();
+      }
+    });
+
+    // Sinkronkan dengan database.
+    if (berhasil) await _muat();
+  }
+
   /// Menggulir ke kartu temuan yang dipilih dari halaman Daftar Temuan.
   void _gulirKeFokus() {
     final id = widget.idTemuanFokus;
@@ -347,25 +388,6 @@ class _RiwayatVerifikasiScreenState extends State<RiwayatVerifikasiScreen> {
         '${dua(t.hour)}:${dua(t.minute)} WIB';
   }
 
-  /// Mengubah isi kolom `dokumentasi` menjadi URL foto.
-  static String? _urlFoto(String? dokumentasi) {
-    final teks = dokumentasi?.trim() ?? '';
-    if (teks.isEmpty) return null;
-
-    if (teks.startsWith('http://') || teks.startsWith('https://')) {
-      return teks;
-    }
-
-    try {
-      return SupabaseService.client.storage
-          .from(_Db.bucketDokumentasi)
-          .getPublicUrl(teks);
-    } catch (e) {
-      debugPrint('Riwayat: gagal membuat URL foto: $e');
-      return null;
-    }
-  }
-
   // ---------------------------------------------------------------------------
   // BUILD
   // ---------------------------------------------------------------------------
@@ -400,8 +422,10 @@ class _RiwayatVerifikasiScreenState extends State<RiwayatVerifikasiScreen> {
                   controller: _kontrol,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-                  itemCount: _daftar.length,
+                  itemCount: _daftar.isEmpty ? 1 : _daftar.length,
                   itemBuilder: (context, indeks) {
+                    if (_daftar.isEmpty) return _kosong();
+
                     final item = _daftar[indeks];
                     final fokus = indeks == indeksFokus;
 
@@ -422,9 +446,13 @@ class _RiwayatVerifikasiScreenState extends State<RiwayatVerifikasiScreen> {
                           _KartuRiwayat(
                             key: fokus ? _kunciFokus : null,
                             item: item,
-                            urlFoto: _urlFoto(item.dokumentasi),
+                            urlFoto: UrlFotoPrivat.ambil(item.dokumentasi),
                             tanggal: _tanggalWib(item.waktuVerifikasi),
                             disorot: fokus,
+                            sedangMenghapus: _sedangDihapus.contains(
+                              item.idTemuan,
+                            ),
+                            onHapus: () => _hapus(item),
                           ),
                         ],
                       ),
@@ -435,6 +463,29 @@ class _RiwayatVerifikasiScreenState extends State<RiwayatVerifikasiScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Keadaan kosong (mis. setelah temuan terakhir dihapus).
+  Widget _kosong() {
+    if (_memuat || _galat != null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 80),
+      child: Column(
+        children: [
+          const Icon(Icons.history_rounded, size: 44, color: Color(0xFF98A2B3)),
+          const SizedBox(height: 10),
+          Text(
+            'Belum ada riwayat verifikasi',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF475467),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -524,9 +575,11 @@ class _RiwayatVerifikasiScreenState extends State<RiwayatVerifikasiScreen> {
 // =============================================================================
 class _KartuRiwayat extends StatelessWidget {
   final _RiwayatItem item;
-  final String? urlFoto;
+  final Future<String?> urlFoto;
   final String tanggal;
   final bool disorot;
+  final bool sedangMenghapus;
+  final VoidCallback onHapus;
 
   const _KartuRiwayat({
     super.key,
@@ -534,9 +587,13 @@ class _KartuRiwayat extends StatelessWidget {
     required this.urlFoto,
     required this.tanggal,
     required this.disorot,
+    required this.sedangMenghapus,
+    required this.onHapus,
   });
 
   static const double _tinggiMedia = 104;
+
+  bool get _punyaFoto => (item.dokumentasi?.trim() ?? '').isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -569,7 +626,49 @@ class _KartuRiwayat extends StatelessWidget {
           _barisLokasi(),
           const SizedBox(height: 12),
           _barisWaktu(),
+          if (item.bolehDihapus) ...[
+            const SizedBox(height: 14),
+            _tombolHapus(),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _tombolHapus() {
+    const merah = Color(0xFFB91C1C);
+
+    return SizedBox(
+      width: double.infinity,
+      height: 46,
+      child: OutlinedButton.icon(
+        onPressed: sedangMenghapus ? null : onHapus,
+        icon: sedangMenghapus
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: merah,
+                ),
+              )
+            : const Icon(Icons.delete_outline_rounded, size: 19),
+        label: Text(
+          sedangMenghapus ? 'Menghapus...' : 'Hapus Temuan',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: merah,
+          disabledForegroundColor: merah,
+          backgroundColor: const Color(0xFFFEF2F2),
+          side: const BorderSide(color: Color(0xFFFECACA)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
       ),
     );
   }
@@ -677,7 +776,7 @@ class _KartuRiwayat extends StatelessWidget {
   // --- Foto bukti + peta -----------------------------------------------------
 
   Widget _media() {
-    final punyaFoto = urlFoto != null;
+    final punyaFoto = _punyaFoto;
 
     // Ada koordinat: foto dan peta berdampingan.
     if (item.punyaPeta) {
@@ -727,21 +826,40 @@ class _KartuRiwayat extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         Container(color: const Color(0xFFECEEF2)),
-        Image.network(
-          urlFoto!,
-          fit: fit,
-          loadingBuilder: (context, child, progres) {
-            if (progres == null) return child;
-            return const Center(
-              child: SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+        FutureBuilder<String?>(
+          future: urlFoto,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              );
+            }
+            final url = snapshot.data;
+            if (url == null || url.isEmpty) {
+              return _penggantiFoto(keterangan: 'Foto tidak dapat dimuat');
+            }
+
+            return Image.network(
+              url,
+              fit: fit,
+              loadingBuilder: (context, child, progres) {
+                if (progres == null) return child;
+                return const Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                );
+              },
+              errorBuilder: (context, error, stackTrace) =>
+                  _penggantiFoto(keterangan: 'Foto tidak dapat dimuat'),
             );
           },
-          errorBuilder: (context, error, stackTrace) =>
-              _penggantiFoto(keterangan: 'Foto tidak dapat dimuat'),
         ),
         Positioned(
           left: 6,

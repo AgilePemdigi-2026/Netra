@@ -1,21 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/supabase_service.dart';
 
 import 'riwayat_verifikasi_screen.dart';
+import 'url_foto_privat.dart';
 import 'verifikasi_screen.dart';
 
-// =============================================================================
-// KONFIGURASI DATABASE (sesuai ERD Supabase NETRA)
-// =============================================================================
 class _Db {
-  /// Nama bucket Supabase Storage tempat foto dokumentasi disimpan.
-  /// Dipakai kalau kolom `dokumentasi` berisi path, bukan URL lengkap.
-  static const String bucketDokumentasi = 'dokumentasi-temuan';
-
-  /// Jumlah maksimum temuan yang dimuat sekaligus (terbaru lebih dulu).
   static const int batasTemuan = 1000;
 }
 
@@ -33,6 +27,8 @@ class TemuanItem {
   final DateTime? waktu;
   final double? akurasi; // dalam persen (0-100)
   final String? tingkat;
+  final String? jenisObjek;
+  final DateTime? waktuDeteksi;
   final double? latitude;
   final double? longitude;
   final StatusTemuan status;
@@ -47,6 +43,8 @@ class TemuanItem {
     this.waktu,
     this.akurasi,
     this.tingkat,
+    this.jenisObjek,
+    this.waktuDeteksi,
     this.latitude,
     this.longitude,
   });
@@ -143,7 +141,7 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
     try {
       baris = await client
           .from('temuan')
-          .select('$_kolomDasar,deteksi(akurasi_deteksi,tingkat_bahaya)')
+          .select('$_kolomDasar,deteksi(akurasi_deteksi,tingkat_bahaya,jenis_objek,waktu_deteksi)')
           .order('waktu_temuan', ascending: false)
           .range(0, _Db.batasTemuan - 1);
     } catch (e) {
@@ -187,6 +185,8 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
           : deteksiMentah;
       final dataDeteksi = deteksi is Map ? deteksi : const {};
 
+      final jenisObjek = _teks(dataDeteksi['jenis_objek'], '');
+
       var akurasi = _keDouble(dataDeteksi['akurasi_deteksi']);
       if (akurasi != null && akurasi <= 1.0) akurasi = akurasi * 100;
 
@@ -202,6 +202,10 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
         waktu: DateTime.tryParse('${row['waktu_temuan'] ?? ''}'),
         akurasi: akurasi,
         tingkat: _kapital(dataDeteksi['tingkat_bahaya'] as String?),
+        jenisObjek: jenisObjek.isEmpty ? null : jenisObjek,
+        waktuDeteksi: DateTime.tryParse(
+          '${dataDeteksi['waktu_deteksi'] ?? ''}',
+        ),
         latitude: _keDouble(row['latitude']),
         longitude: _keDouble(row['longitude']),
         status: _klasifikasi(status),
@@ -314,36 +318,9 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
   static String _persen(double nilai) =>
       '${nilai.toStringAsFixed(2).replaceAll('.', ',')}%';
 
-  /// Mengubah isi kolom `dokumentasi` menjadi URL foto.
-  /// Bisa berupa URL lengkap, atau path di Supabase Storage.
-  static String? _urlFoto(String? dokumentasi) {
-    final teks = dokumentasi?.trim() ?? '';
-
-    debugPrint('NETRA FOTO - Path database: $teks');
-
-    if (teks.isEmpty) {
-      debugPrint('NETRA FOTO - Path dokumentasi kosong');
-      return null;
-    }
-
-    if (teks.startsWith('http://') || teks.startsWith('https://')) {
-      debugPrint('NETRA FOTO - Menggunakan URL langsung: $teks');
-      return teks;
-    }
-
-    try {
-      final url = SupabaseService.client.storage
-          .from(_Db.bucketDokumentasi)
-          .getPublicUrl(teks);
-
-      debugPrint('NETRA FOTO - URL hasil generate: $url');
-
-      return url;
-    } catch (e) {
-      debugPrint('NETRA FOTO - Gagal membuat URL: $e');
-      return null;
-    }
-  }
+  /// Mengambil URL sementara untuk bucket dokumentasi privat.
+  static Future<String?> _urlFoto(String? dokumentasi) =>
+      UrlFotoPrivat.ambil(dokumentasi);
 
   List<TemuanItem> get _tersaring {
     final kata = _pencarian.text.trim().toLowerCase();
@@ -654,7 +631,7 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
 // =============================================================================
 class _KartuTemuan extends StatelessWidget {
   final TemuanItem temuan;
-  final String? urlFoto;
+  final Future<String?> urlFoto;
   final String tanggal;
   final String? akurasi;
   final VoidCallback onTekan;
@@ -819,31 +796,30 @@ class _KartuTemuan extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (urlFoto == null)
-              _penggantiFoto('Tidak ada foto')
-            else
-              Image.network(
-                urlFoto!,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, progres) {
-                  if (progres == null) return child;
-                  return Container(
-                    color: const Color(0xFFECEEF2),
-                    alignment: Alignment.center,
-                    child: const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  debugPrint('NETRA FOTO - Gagal menampilkan gambar: $error');
-                  debugPrint('NETRA FOTO - Stack trace: $stackTrace');
-
-                  return _penggantiFoto('Foto tidak dapat dimuat');
-                },
-              ),
+            FutureBuilder<String?>(
+              future: urlFoto,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return _penggantiFoto('Memuat foto...');
+                }
+                final url = snapshot.data;
+                if (url == null || url.isEmpty) {
+                  return _penggantiFoto('Foto tidak tersedia');
+                }
+                return Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, progres) {
+                    if (progres == null) return child;
+                    return _penggantiFoto('Memuat foto...');
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    debugPrint('NETRA FOTO - Gagal menampilkan gambar: $error');
+                    return _penggantiFoto('Foto tidak dapat dimuat');
+                  },
+                );
+              },
+            ),
             Positioned(
               left: 8,
               bottom: 8,
@@ -1113,41 +1089,68 @@ class _DetailTemuanSementara extends StatelessWidget {
         '${dua(t.hour)}:${dua(t.minute)}';
   }
 
+  /// Jam saja, mis. "08:29 WIB".
+  String _jamWib(DateTime? waktu) {
+    if (waktu == null) return '-';
+
+    final t = waktu.toUtc().add(const Duration(hours: 7));
+    String dua(int n) => n.toString().padLeft(2, '0');
+
+    return '${dua(t.hour)}:${dua(t.minute)} WIB';
+  }
+
   String _koordinat(double? nilai) {
     return nilai == null ? '-' : nilai.toStringAsFixed(6);
   }
 
-  String? _urlFoto() {
-    final dokumentasi = temuan.dokumentasi?.trim() ?? '';
+  Future<String?> _urlFoto() => UrlFotoPrivat.ambil(temuan.dokumentasi);
 
-    if (dokumentasi.isEmpty) return null;
-
-    if (dokumentasi.startsWith('http://') ||
-        dokumentasi.startsWith('https://')) {
-      return dokumentasi;
-    }
-
-    try {
-      return SupabaseService.client.storage
-          .from(_Db.bucketDokumentasi)
-          .getPublicUrl(dokumentasi);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  String _urlPeta() {
+  /// Koordinat dianggap valid bila ada dan berada dalam rentang peta web.
+  /// (Nilai di luar rentang membuat perhitungan ubin peta gagal.)
+  bool get _koordinatValid {
     final lat = temuan.latitude;
     final lon = temuan.longitude;
 
-    if (lat == null || lon == null) return '';
+    return lat != null &&
+        lon != null &&
+        lat.isFinite &&
+        lon.isFinite &&
+        lat >= -85 &&
+        lat <= 85 &&
+        lon >= -180 &&
+        lon <= 180;
+  }
 
-    return Uri.https('staticmap.openstreetmap.de', '/staticmap.php', {
-      'center': '$lat,$lon',
-      'zoom': '15',
-      'size': '600x300',
-      'markers': '$lat,$lon,red-pushpin',
-    }).toString();
+  /// Membuka titik temuan di aplikasi/peramban Google Maps.
+  Future<void> _bukaGoogleMaps(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    void pesan(String teks) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(teks)));
+    }
+
+    if (!_koordinatValid) {
+      pesan('Koordinat temuan tidak tersedia.');
+      return;
+    }
+
+    final uri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': '${temuan.latitude},${temuan.longitude}',
+    });
+
+    try {
+      final berhasil = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!berhasil) pesan('Google Maps tidak dapat dibuka di perangkat ini.');
+    } catch (e) {
+      debugPrint('NETRA PETA - Gagal membuka Google Maps: $e');
+      pesan('Google Maps tidak dapat dibuka di perangkat ini.');
+    }
   }
 
   Color _warnaStatus() {
@@ -1227,7 +1230,7 @@ class _DetailTemuanSementara extends StatelessWidget {
                 children: [
                   _kartuInformasi(),
                   const SizedBox(height: 9),
-                  _kartuLokasi(),
+                  _kartuLokasi(context),
                   const SizedBox(height: 9),
                   _kartuDokumentasi(foto),
                   const SizedBox(height: 9),
@@ -1380,9 +1383,7 @@ class _DetailTemuanSementara extends StatelessWidget {
   // ============================================================
   // KARTU LOKASI LAPORAN
   // ============================================================
-  Widget _kartuLokasi() {
-    final urlPeta = _urlPeta();
-
+  Widget _kartuLokasi(BuildContext context) {
     return _kartu(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1416,21 +1417,42 @@ class _DetailTemuanSementara extends StatelessWidget {
             child: SizedBox(
               height: 112,
               width: double.infinity,
-              child: urlPeta.isEmpty
-                  ? _petaTidakTersedia()
-                  : Image.network(
-                      urlPeta,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, progress) {
-                        if (progress == null) return child;
-                        return _petaTidakTersedia(pesan: 'Memuat peta...');
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return _petaTidakTersedia();
-                      },
-                    ),
+              child: _koordinatValid
+                  ? PetaMini(
+                      latitude: temuan.latitude!,
+                      longitude: temuan.longitude!,
+                      label: 'Lokasi Temuan',
+                    )
+                  : _petaTidakTersedia(),
             ),
           ),
+
+          if (_koordinatValid) ...[
+            const SizedBox(height: 7),
+            SizedBox(
+              width: double.infinity,
+              height: 36,
+              child: OutlinedButton.icon(
+                onPressed: () => _bukaGoogleMaps(context),
+                icon: const Icon(Icons.map_outlined, size: 15),
+                label: Text(
+                  'Buka di Google Maps',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _biru,
+                  side: const BorderSide(color: Color(0xFFC7D2FE)),
+                  backgroundColor: const Color(0xFFF5F7FF),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                ),
+              ),
+            ),
+          ],
 
           const SizedBox(height: 5),
           Row(
@@ -1479,7 +1501,7 @@ class _DetailTemuanSementara extends StatelessWidget {
   // ============================================================
   // KARTU DOKUMENTASI LAPANGAN
   // ============================================================
-  Widget _kartuDokumentasi(String? foto) {
+  Widget _kartuDokumentasi(Future<String?> foto) {
     return _kartu(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1504,15 +1526,26 @@ class _DetailTemuanSementara extends StatelessWidget {
             child: SizedBox(
               width: double.infinity,
               height: 125,
-              child: foto == null
-                  ? _dokumentasiKosong()
-                  : Image.network(
-                      foto,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return _dokumentasiKosong();
-                      },
-                    ),
+              child: FutureBuilder<String?>(
+                future: foto,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final url = snapshot.data;
+                  if (url == null || url.isEmpty) {
+                    return _dokumentasiKosong();
+                  }
+                  return Image.network(
+                    url,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      debugPrint('NETRA FOTO - Gagal memuat detail: $error');
+                      return _dokumentasiKosong();
+                    },
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -1545,8 +1578,8 @@ class _DetailTemuanSementara extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Laporan ini terekam via sistem telemetri AI '
-            'tanpa lampiran tangkapan kamera eksternal.',
+            'Foto belum tersedia atau akses dokumentasi ditolak. '
+            'Periksa akun admin dan izin Storage.',
             textAlign: TextAlign.center,
             style: GoogleFonts.plusJakartaSans(
               fontSize: 8,
@@ -1580,7 +1613,7 @@ class _DetailTemuanSementara extends StatelessWidget {
               Expanded(
                 child: _kotakDeteksi(
                   'Jenis Objek',
-                  '-',
+                  temuan.jenisObjek ?? '-',
                   Icons.do_not_disturb_on,
                   const Color(0xFFDC2626),
                 ),
@@ -1611,7 +1644,7 @@ class _DetailTemuanSementara extends StatelessWidget {
               Expanded(
                 child: _kotakDeteksi(
                   'Waktu Deteksi',
-                  '-',
+                  _jamWib(temuan.waktuDeteksi),
                   Icons.access_time,
                   const Color(0xFF475467),
                 ),
@@ -1619,7 +1652,13 @@ class _DetailTemuanSementara extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 7),
-          _barisWaktu(Icons.auto_awesome, 'Waktu Lengkap Deteksi', '-'),
+          _barisWaktu(
+            Icons.auto_awesome,
+            'Waktu Lengkap Deteksi',
+            temuan.waktuDeteksi == null
+                ? '-'
+                : '${_tanggalWib(temuan.waktuDeteksi)} WIB',
+          ),
         ],
       ),
     );
