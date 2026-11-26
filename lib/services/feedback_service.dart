@@ -1,4 +1,3 @@
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,8 +21,7 @@ class FeedbackService {
 
     final savedLanguage = prefs.getString('netra_bahasa') ?? 'id-ID';
 
-    _currentLanguage =
-        savedLanguage == 'en-US' ? 'en-US' : 'id-ID';
+    _currentLanguage = savedLanguage == 'en-US' ? 'en-US' : 'id-ID';
 
     _speechRate = (prefs.getDouble('netra_kecepatan') ?? 0.48)
         .clamp(0.1, 1.0)
@@ -58,22 +56,16 @@ class FeedbackService {
               : locale.startsWith('id');
         }).toList();
 
-        debugPrint(
-          'NETRA available voices: ${matchingVoices.length}',
-        );
+        debugPrint('NETRA available voices: ${matchingVoices.length}');
 
         if (matchingVoices.isNotEmpty) {
           final voice = matchingVoices.first as Map;
 
           final name = voice['name']?.toString();
-          final locale = (voice['locale'] ?? voice['lang'])
-              ?.toString();
+          final locale = (voice['locale'] ?? voice['lang'])?.toString();
 
           if (name != null && locale != null) {
-            await _tts.setVoice({
-              'name': name,
-              'locale': locale,
-            });
+            await _tts.setVoice({'name': name, 'locale': locale});
 
             debugPrint('NETRA selected voice: $name');
           }
@@ -164,7 +156,7 @@ ringkasan temuan perjalanan Anda.
 
 Anda juga dapat mengirimkan
 laporan temuan kepada
-Dinas Sosial Kota Surabaya.
+Dinas PU Bina Marga.
 
 Ingat, Netra adalah alat bantu informasi.
 

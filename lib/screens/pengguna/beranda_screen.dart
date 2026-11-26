@@ -171,7 +171,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
 
                             Expanded(
                               child: Text(
-                                'Dinas Sosial Kota Surabaya',
+                                'Dinas PU Bina Marga',
                                 style: GoogleFonts.poppins(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,

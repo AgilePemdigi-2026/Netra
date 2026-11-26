@@ -12,7 +12,6 @@ import 'url_foto_privat.dart';
 // KONFIGURASI
 // =============================================================================
 class _Db {
-
   /// Jumlah maksimum riwayat yang dimuat (terbaru lebih dulu).
   static const int batasRiwayat = 300;
 }
@@ -506,7 +505,7 @@ class _RiwayatVerifikasiScreenState extends State<RiwayatVerifikasiScreen> {
           const SizedBox(width: 7),
           Expanded(
             child: Text(
-              'Dinas Sosial Kota Surabaya',
+              'Dinas PU Bina Marga',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
@@ -647,10 +646,7 @@ class _KartuRiwayat extends StatelessWidget {
             ? const SizedBox(
                 width: 18,
                 height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: merah,
-                ),
+                child: CircularProgressIndicator(strokeWidth: 2, color: merah),
               )
             : const Icon(Icons.delete_outline_rounded, size: 19),
         label: Text(
@@ -1022,7 +1018,7 @@ class _PetaMini extends StatelessWidget {
   });
 
   static const int _zoom = 16;
-  static const String _userAgent = 'NETRA/1.0 (Dinas Sosial Kota Surabaya)';
+  static const String _userAgent = 'NETRA/1.0 (Dinas PU Bina Marga)';
 
   @override
   Widget build(BuildContext context) {

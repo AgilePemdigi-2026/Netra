@@ -20,13 +20,9 @@ class KameraScreen extends StatefulWidget {
   /// Jika tidak diberikan, aplikasi tetap menggunakan Supabase seperti biasa.
   final Future<int> Function(DateTime waktuMulai)? buatPerjalanan;
   final Future<void> Function(int idPerjalanan, DateTime waktuSelesai)?
-      simpanPerjalanan;
+  simpanPerjalanan;
 
-  const KameraScreen({
-    super.key,
-    this.buatPerjalanan,
-    this.simpanPerjalanan,
-  });
+  const KameraScreen({super.key, this.buatPerjalanan, this.simpanPerjalanan});
 
   @override
   State<KameraScreen> createState() => _KameraScreenState();
@@ -936,10 +932,15 @@ class _KameraScreenState extends State<KameraScreen> {
   void dispose() {
     _timer?.cancel();
     _langgananGPS?.cancel();
-    _speech.stop();
-    _voiceAktif = false;
-    _tts.stop();
 
+    // Pastikan mikrofon kamera berhenti.
+    _speech.stop();
+
+    // Jangan panggil _tts.stop() di sini.
+    // TTS sudah dihentikan secara eksplisit di
+    // _selesaikanPerjalanan() sebelum pindah halaman.
+
+    _voiceAktif = false;
     _yoloController.dispose();
 
     super.dispose();
@@ -1425,7 +1426,7 @@ class _KameraScreenState extends State<KameraScreen> {
           Text(
             _english
                 ? 'The system will summarize all accessibility obstacles detected during this journey for the Surabaya City Social Services report.'
-                : 'Sistem akan merangkum seluruh temuan rintangan aksesibilitas yang terdeteksi selama perjalanan ini untuk laporan Dinas Sosial Kota Surabaya.',
+                : 'Sistem akan merangkum seluruh temuan rintangan aksesibilitas yang terdeteksi selama perjalanan ini untuk laporan Dinas PU Bina Marga.',
             textAlign: TextAlign.center,
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11.5,

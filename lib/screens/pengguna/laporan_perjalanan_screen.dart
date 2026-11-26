@@ -41,7 +41,7 @@ class LaporanPerjalananScreen extends StatefulWidget {
   /// Callback opsional untuk menguji alur kirim tanpa menghubungi server.
   /// Pada aplikasi normal, callback ini tidak diberikan dan Supabase dipakai.
   final Future<void> Function(List<TemuanRintangan> temuan, int idPerjalanan)?
-      onKirimLaporan;
+  onKirimLaporan;
 
   const LaporanPerjalananScreen({
     super.key,
@@ -93,6 +93,8 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
   }
 
   Future<void> _mulai() async {
+    debugPrint('NETRA LAPORAN: Memulai halaman laporan');
+
     final prefs = await SharedPreferences.getInstance();
     _bahasa = prefs.getString('netra_bahasa') ?? 'id-ID';
 
@@ -102,9 +104,25 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
       _statusSuara = _petunjukSuara;
     });
 
+    // Beri waktu halaman kamera menyelesaikan proses dispose.
+    await Future.delayed(const Duration(milliseconds: 700));
+
+    if (!mounted) return;
+
+    // Siapkan TTS terlebih dahulu.
     await _siapkanSuara();
-    await _siapkanPengenalanSuara();
+
+    if (!mounted) return;
+
+    // Bacakan laporan sampai selesai.
     await _bacakanLaporan();
+
+    if (!mounted) return;
+
+    // Speech-to-Text hanya diinisialisasi setelah TTS selesai.
+    await _siapkanPengenalanSuara();
+
+    debugPrint('NETRA LAPORAN: Persiapan laporan selesai');
   }
 
   // ---------------------------------------------------------------------------
@@ -113,14 +131,18 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
 
   Future<void> _siapkanSuara() async {
     try {
+      debugPrint('NETRA TTS: Mulai persiapan suara');
+
       await _tts.setLanguage(_bahasa);
       await _tts.setSpeechRate(0.48);
       await _tts.setPitch(1.0);
       await _tts.setVolume(1.0);
       await _tts.awaitSpeakCompletion(true);
+
       _ttsSiap = true;
+      debugPrint('NETRA TTS: Berhasil disiapkan dengan bahasa $_bahasa');
     } catch (e) {
-      debugPrint('NETRA laporan TTS: $e');
+      debugPrint('NETRA TTS: GAGAL DISIAPKAN: $e');
       _ttsSiap = false;
     }
   }
@@ -165,9 +187,23 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
 
   /// Membacakan ringkasan laporan, lalu otomatis menyalakan mikrofon.
   Future<void> _bacakanLaporan() async {
-    if (!mounted || !_ttsSiap) return;
+    if (!mounted) return;
 
-    final teks = StringBuffer(_teks('Laporan perjalanan. ', 'Trip report. '));
+    if (!_ttsSiap) {
+      debugPrint('NETRA TTS: TTS belum siap');
+
+      setState(() {
+        _statusSuara = _teks(
+          'Suara tidak tersedia. Silakan gunakan tombol pada layar.',
+          'Voice is unavailable. Please use the buttons on screen.',
+        );
+      });
+      return;
+    }
+
+    final teks = StringBuffer(
+      _teks('Laporan perjalanan telah selesai. ', 'Your trip has ended. '),
+    );
 
     if (_adaTemuan) {
       final total = widget.temuan.length;
@@ -176,7 +212,7 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
       teks.write(
         _bahasaInggris
             ? '$total accessibility obstacles were found. '
-            : 'Ditemukan $total temuan masalah. ',
+            : 'Ditemukan $total hambatan selama perjalanan. ',
       );
 
       for (var i = 0; i < batas; i++) {
@@ -193,39 +229,59 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
         teks.write(
           _bahasaInggris
               ? 'And ${total - batas} more findings. '
-              : 'Dan ${total - batas} temuan lainnya. ',
+              : 'Dan ${total - batas} hambatan lainnya. ',
         );
       }
 
       teks.write(
         _teks(
-          'Apakah Anda ingin mengirim laporan ini ke Dinas Sosial Kota Surabaya? '
-              'Ucapkan ya untuk mengirim, atau tidak untuk kembali ke beranda.',
-          'Would you like to send this report to the Surabaya Social Services Office? '
-              'Say yes to send, or no to return to the home page.',
+          'Apakah Anda ingin mengirim laporan ini? '
+              'Tekan tombol Kirim untuk mengirim, atau tombol Tidak untuk kembali ke beranda.',
+          'Would you like to send this report? '
+              'Press Send to submit, or No to return to the home page.',
         ),
       );
     } else {
       teks.write(
         _teks(
-          'Tidak ditemukan hambatan. Ucapkan tidak untuk kembali ke beranda.',
-          'No obstacles were found. Say no to return to the home page.',
+          'Tidak ditemukan hambatan selama perjalanan. '
+              'Tidak ada laporan yang perlu dikirim. '
+              'Tekan tombol Tidak untuk kembali ke beranda.',
+          'No obstacles were found during the trip. '
+              'There is no report to send. '
+              'Press No to return to the home page.',
         ),
       );
     }
 
     try {
+      debugPrint('NETRA TTS: Mulai membacakan laporan');
+      debugPrint('NETRA TTS: ${teks.toString()}');
+
+      // Tunggu sampai seluruh kalimat selesai dibacakan.
+      await _tts.awaitSpeakCompletion(true);
+
       await _tts.speak(teks.toString());
-    } catch (e) {
-      debugPrint('NETRA laporan bacakan: $e');
-    }
 
-    if (!mounted || _mendengarkan || _mengirim) return;
+      debugPrint('NETRA TTS: Laporan selesai dibacakan');
 
-    await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
 
-    if (mounted && !_mendengarkan && !_mengirim) {
-      _tekanUntukBerbicara();
+      setState(() {
+        _statusSuara = _petunjukSuara;
+      });
+    } catch (e, stackTrace) {
+      debugPrint('NETRA TTS: Gagal membacakan laporan: $e');
+      debugPrint('$stackTrace');
+
+      if (!mounted) return;
+
+      setState(() {
+        _statusSuara = _teks(
+          'Gagal membacakan laporan. Silakan gunakan tombol pada layar.',
+          'Unable to read the report. Please use the buttons on screen.',
+        );
+      });
     }
   }
 
@@ -451,49 +507,49 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
         int jumlahFotoBerhasil = 0;
 
         for (final t in widget.temuan) {
-        // 1. Upload foto terlebih dahulu jika tersedia.
-        final pathFoto = await _uploadFoto(client, t);
+          // 1. Upload foto terlebih dahulu jika tersedia.
+          final pathFoto = await _uploadFoto(client, t);
 
-        if (pathFoto != null) {
-          jumlahFotoBerhasil++;
+          if (pathFoto != null) {
+            jumlahFotoBerhasil++;
+          }
+
+          // 2. Simpan hasil deteksi.
+          final hasilDeteksi = await client
+              .from('deteksi')
+              .insert({
+                'id_perjalanan': widget.idPerjalanan,
+                'id_fasilitas': null,
+                'jenis_objek': t.jenis,
+                'tingkat_bahaya': _tingkatBahaya(t.jenis),
+                'akurasi_deteksi': t.confidence,
+                'latitude': t.latitude,
+                'longitude': t.longitude,
+                'waktu_deteksi': t.waktu.toIso8601String(),
+              })
+              .select('id_deteksi')
+              .single();
+
+          final int idDeteksi = (hasilDeteksi['id_deteksi'] as num).toInt();
+
+          // 3. Simpan laporan temuan beserta path foto.
+          await client.from('temuan').insert({
+            'id_perjalanan': widget.idPerjalanan,
+            'id_deteksi': idDeteksi,
+            'jenis_permasalahan': t.jenis,
+            'lokasi_laporan': t.namaJalan,
+            'latitude': t.latitude,
+            'longitude': t.longitude,
+            'deskripsi': 'Akurasi deteksi: ${t.akurasiTeks}',
+            'status_tindak_lanjut': 'menunggu_verifikasi',
+            'status': 'belum_diverifikasi',
+            'waktu_temuan': t.waktu.toIso8601String(),
+            'waktu': t.waktu.toIso8601String(),
+
+            // Kolom ini menyimpan path foto dari bucket dokumentasi.
+            'dokumentasi': pathFoto,
+          });
         }
-
-        // 2. Simpan hasil deteksi.
-        final hasilDeteksi = await client
-            .from('deteksi')
-            .insert({
-              'id_perjalanan': widget.idPerjalanan,
-              'id_fasilitas': null,
-              'jenis_objek': t.jenis,
-              'tingkat_bahaya': _tingkatBahaya(t.jenis),
-              'akurasi_deteksi': t.confidence,
-              'latitude': t.latitude,
-              'longitude': t.longitude,
-              'waktu_deteksi': t.waktu.toIso8601String(),
-            })
-            .select('id_deteksi')
-            .single();
-
-        final int idDeteksi = (hasilDeteksi['id_deteksi'] as num).toInt();
-
-        // 3. Simpan laporan temuan beserta path foto.
-        await client.from('temuan').insert({
-          'id_perjalanan': widget.idPerjalanan,
-          'id_deteksi': idDeteksi,
-          'jenis_permasalahan': t.jenis,
-          'lokasi_laporan': t.namaJalan,
-          'latitude': t.latitude,
-          'longitude': t.longitude,
-          'deskripsi': 'Akurasi deteksi: ${t.akurasiTeks}',
-          'status_tindak_lanjut': 'menunggu_verifikasi',
-          'status': 'belum_diverifikasi',
-          'waktu_temuan': t.waktu.toIso8601String(),
-          'waktu': t.waktu.toIso8601String(),
-
-          // Kolom ini menyimpan path foto dari bucket dokumentasi.
-          'dokumentasi': pathFoto,
-        });
-      }
 
         debugPrint(
           'NETRA: ${widget.temuan.length} laporan tersimpan, '
@@ -528,7 +584,7 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
 
   Future<void> _tampilkanBerhasil() async {
     final pesan = _teks(
-      'Laporan temuan masalah berhasil dikirimkan ke Dinas Sosial Kota Surabaya',
+      'Laporan temuan masalah berhasil dikirimkan ke Dinas PU Bina Marga',
       'The obstacle report has been successfully sent to the Surabaya Social Services Office',
     );
 
@@ -722,7 +778,7 @@ class _LaporanPerjalananScreenState extends State<LaporanPerjalananScreen> {
           Text(
             _adaTemuan
                 ? _teks(
-                    'Apakah Anda ingin mengirim laporan ini ke Dinas Sosial Kota Surabaya?',
+                    'Apakah Anda ingin mengirim laporan ini ke Dinas PU Bina Marga?',
                     'Would you like to send this report to the Surabaya Social Services Office?',
                   )
                 : _teks('Tidak Ditemukan Hambatan', 'No Obstacles Found'),

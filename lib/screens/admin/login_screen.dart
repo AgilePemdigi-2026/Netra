@@ -86,12 +86,13 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
         setState(() {
           _pesanError =
-              'Akun ini tidak terdaftar sebagai petugas Dinas Sosial.';
+              'Akun ini tidak terdaftar sebagai petugas Dinas PU Bina Marga.';
         });
         return;
       }
 
-      final namaAdmin = (admin['nama'] as String?) ?? 'Petugas Dinsos';
+      final namaAdmin =
+          (admin['nama'] as String?) ?? 'Petugas Dinas PU Bina Marga';
 
       // Simpan nama ke cache supaya dashboard bisa menampilkannya langsung.
       try {
@@ -182,7 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Dinas Sosial Kota Surabaya',
+                            'Dinas PU Bina Marga',
                             style: GoogleFonts.poppins(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
@@ -324,7 +325,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Gunakan email akun petugas Dinas Sosial.',
+                              'Gunakan email akun petugas Dinas PU Bina Marga.',
                               style: GoogleFonts.poppins(
                                 fontSize: 10.5,
                                 color: const Color(0xFF64748B),
