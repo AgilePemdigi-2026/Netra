@@ -35,7 +35,7 @@ void main() {
   group('BDD - Login Admin NETRA', () {
     setUpAll(() async {
       if (_supabaseSiap) {
-        await Supabase.initialize(
+        await inisialisasiSupabaseSekali(
           url: _supabaseUrl,
           publishableKey: _supabaseKey,
         );

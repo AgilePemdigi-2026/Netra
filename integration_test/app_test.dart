@@ -14,7 +14,7 @@ void main() {
 
       expect(find.byType(MaterialApp), findsOneWidget);
 
-      print('PASS: Aplikasi NETRA berhasil dibuka');
+      debugPrint('PASS: Aplikasi NETRA berhasil dibuka');
     });
   });
 }

@@ -1,6 +1,6 @@
 import 'package:integration_test/integration_test.dart';
 
-import 'netra_test.dart' as beranda;
+import 'beranda_bdd_test.dart' as beranda;
 import 'login_bdd_test.dart' as login;
 import 'pengaturan_bdd_test.dart' as pengaturan;
 import 'kamera_bdd_test.dart' as kamera;

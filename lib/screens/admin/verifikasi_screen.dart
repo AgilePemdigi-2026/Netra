@@ -13,7 +13,7 @@ import 'daftar_temuan_screen.dart'; // TemuanItem
 class _Db {
   /// Nama bucket Supabase Storage tempat foto dokumentasi disimpan.
   /// Samakan dengan nilai di daftar_temuan_screen.dart.
-  static const String bucketDokumentasi = 'dokumentasi';
+  static const String bucketDokumentasi = 'dokumentasi-temuan';
 
   /// Nilai kolom `status` yang disimpan ke tabel `verifikasi` dan `temuan`.
   static const String statusDiterima = 'terverifikasi';
