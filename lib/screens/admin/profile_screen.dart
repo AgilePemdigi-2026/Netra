@@ -27,7 +27,7 @@ class _ProfilAdminTabState extends State<ProfilAdminTab> {
   /// Sesuaikan dengan nama file lambang di folder assets kamu.
   static const String _asetLambang = 'assets/images/dpu.png';
 
-  static const String _labelPeran = 'Admin Dinas PU Bina Marga';
+  static const String _labelPeran = 'Admin';
   static const String _hakOtoritas = 'Verifikator Temuan Masalah';
 
   static const Color _biru = Color(0xFF1D4ED8);
