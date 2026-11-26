@@ -12,7 +12,6 @@ import 'url_foto_privat.dart';
 // KONFIGURASI
 // =============================================================================
 class _Db {
-
   /// Nilai kolom `status` yang disimpan ke tabel `verifikasi` dan `temuan`.
   static const String statusDiterima = 'terverifikasi';
   static const String statusDitolak = 'ditolak';
@@ -182,7 +181,7 @@ class _VerifikasiScreenState extends State<VerifikasiScreen> {
 
     if (admin == null) {
       throw const _GalatVerifikasi(
-        'Akun ini tidak terdaftar sebagai petugas Dinas Sosial.',
+        'Akun ini tidak terdaftar sebagai petugas Dinas PU Bina Marga.',
       );
     }
 
@@ -232,7 +231,7 @@ class _VerifikasiScreenState extends State<VerifikasiScreen> {
     final nama = '${admin['nama'] ?? ''}'.trim();
 
     return (
-      namaPetugas: nama.isEmpty ? 'Petugas Dinsos' : nama,
+      namaPetugas: nama.isEmpty ? 'Petugas Dinas PU Bina Marga' : nama,
       waktu: DateTime.tryParse('${baris['waktu_verifikasi'] ?? ''}') ?? waktu,
       catatan: catatan,
     );
@@ -1015,7 +1014,7 @@ class _HeaderHalaman extends StatelessWidget {
           const SizedBox(width: 7),
           Expanded(
             child: Text(
-              'Dinas Sosial Kota Surabaya',
+              'Dinas PU Bina Marga',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
@@ -1201,7 +1200,7 @@ class PetaMini extends StatelessWidget {
   });
 
   static const int _zoom = 16;
-  static const String _userAgent = 'NETRA/1.0 (Dinas Sosial Kota Surabaya)';
+  static const String _userAgent = 'NETRA/1.0 (Dinas PU Bina Marga)';
 
   @override
   Widget build(BuildContext context) {

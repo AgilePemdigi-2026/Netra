@@ -22,7 +22,7 @@ class _Db {
   static const String tabelDeteksi = 'deteksi';
   static const String waktuDeteksi = 'waktu_deteksi';
 
-  // Tabel temuan: satu baris = satu temuan yang dilaporkan ke Dinas Sosial.
+  // Tabel temuan: satu baris = satu temuan yang dilaporkan ke Dinas PU Bina Marga Provinsi Jawa Timur.
   static const String tabelTemuan = 'temuan';
   static const String idTemuan = 'id_temuan';
   static const String waktuTemuan = 'waktu_temuan';
@@ -455,7 +455,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(width: 7),
           Text(
-            'Dinas Sosial Kota Surabaya',
+            'Dinas PU Bina Marga',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               fontWeight: FontWeight.w600,
@@ -608,7 +608,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 2),
           Text(
-            'Petugas Dinas Sosial Kota Surabaya',
+            'Petugas Dinas PU Bina Marga',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 13,
               color: const Color(0xFF475467),

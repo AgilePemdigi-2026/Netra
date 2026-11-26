@@ -141,7 +141,9 @@ class _TemuanAksesibilitasTabState extends State<TemuanAksesibilitasTab> {
     try {
       baris = await client
           .from('temuan')
-          .select('$_kolomDasar,deteksi(akurasi_deteksi,tingkat_bahaya,jenis_objek,waktu_deteksi)')
+          .select(
+            '$_kolomDasar,deteksi(akurasi_deteksi,tingkat_bahaya,jenis_objek,waktu_deteksi)',
+          )
           .order('waktu_temuan', ascending: false)
           .range(0, _Db.batasTemuan - 1);
     } catch (e) {
@@ -1209,7 +1211,7 @@ class _DetailTemuanSementara extends StatelessWidget {
             const Icon(Icons.location_on_outlined, size: 14),
             const SizedBox(width: 5),
             Text(
-              'Dinas Sosial Kota Surabaya',
+              'Dinas PU Bina Marga',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,

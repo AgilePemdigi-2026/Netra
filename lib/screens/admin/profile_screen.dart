@@ -25,9 +25,9 @@ class ProfilAdminTab extends StatefulWidget {
 class _ProfilAdminTabState extends State<ProfilAdminTab> {
   /// Lambang yang tampil di kartu identitas.
   /// Sesuaikan dengan nama file lambang di folder assets kamu.
-  static const String _asetLambang = 'assets/images/logo_dinsos_sby.png';
+  static const String _asetLambang = 'assets/images/dpu.png';
 
-  static const String _labelPeran = 'Admin Dinas Sosial';
+  static const String _labelPeran = 'Admin Dinas PU Bina Marga';
   static const String _hakOtoritas = 'Verifikator Temuan Masalah';
 
   static const Color _biru = Color(0xFF1D4ED8);
@@ -45,7 +45,7 @@ class _ProfilAdminTabState extends State<ProfilAdminTab> {
 
   String get _nama {
     final nama = widget.namaAdmin?.trim() ?? '';
-    return nama.isEmpty ? 'Petugas Dinas Sosial' : nama;
+    return nama.isEmpty ? 'Petugas Dinas PU Bina Marga' : nama;
   }
 
   // ---------------------------------------------------------------------------
