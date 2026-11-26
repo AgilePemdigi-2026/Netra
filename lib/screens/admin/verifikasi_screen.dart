@@ -6,15 +6,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/supabase_service.dart';
 import 'daftar_temuan_screen.dart'; // TemuanItem
+import 'url_foto_privat.dart';
 
 // =============================================================================
 // KONFIGURASI
 // =============================================================================
 class _Db {
-  /// Nama bucket Supabase Storage tempat foto dokumentasi disimpan.
-  /// Samakan dengan nilai di daftar_temuan_screen.dart.
-  static const String bucketDokumentasi = 'dokumentasi';
-
   /// Nilai kolom `status` yang disimpan ke tabel `verifikasi` dan `temuan`.
   static const String statusDiterima = 'terverifikasi';
   static const String statusDitolak = 'ditolak';
@@ -67,25 +64,6 @@ String _tanggalWib(DateTime? waktu) {
       '${dua(t.hour)}:${dua(t.minute)} WIB';
 }
 
-/// Mengubah isi kolom `dokumentasi` menjadi URL foto.
-String? _urlFoto(String? dokumentasi) {
-  final teks = dokumentasi?.trim() ?? '';
-  if (teks.isEmpty) return null;
-
-  if (teks.startsWith('http://') || teks.startsWith('https://')) {
-    return teks;
-  }
-
-  try {
-    return SupabaseService.client.storage
-        .from(_Db.bucketDokumentasi)
-        .getPublicUrl(teks);
-  } catch (e) {
-    debugPrint('Verifikasi: gagal membuat URL foto: $e');
-    return null;
-  }
-}
-
 /// "Sekitar Stasiun Gubeng, Jl. Stasiun Gubeng, Surabaya"
 /// -> utama: "Sekitar Stasiun Gubeng", sisa: "Jl. Stasiun Gubeng, Surabaya"
 ({String utama, String sisa}) _pisahLokasi(String lokasi) {
@@ -119,6 +97,11 @@ class _VerifikasiScreenState extends State<VerifikasiScreen> {
   /// Keputusan yang sedang diproses (null = tidak ada proses berjalan).
   _Keputusan? _memproses;
   String? _galat;
+
+  /// URL sementara foto (bucket privat), dibuat sekali per halaman.
+  late final Future<String?> _foto = UrlFotoPrivat.ambil(
+    widget.temuan.dokumentasi,
+  );
 
   // ---------------------------------------------------------------------------
   // PROSES
@@ -376,8 +359,6 @@ class _VerifikasiScreenState extends State<VerifikasiScreen> {
   }
 
   Widget _kartuFoto() {
-    final url = _urlFoto(widget.temuan.dokumentasi);
-
     Widget penggantiFoto() => Container(
       color: const Color(0xFF475467),
       alignment: Alignment.center,
@@ -388,6 +369,16 @@ class _VerifikasiScreenState extends State<VerifikasiScreen> {
       ),
     );
 
+    Widget memuatFoto() => Container(
+      color: const Color(0xFF475467),
+      alignment: Alignment.center,
+      child: const SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+      ),
+    );
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: AspectRatio(
@@ -395,29 +386,29 @@ class _VerifikasiScreenState extends State<VerifikasiScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (url == null)
-              penggantiFoto()
-            else
-              Image.network(
-                url,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, progres) {
-                  if (progres == null) return child;
-                  return Container(
-                    color: const Color(0xFF475467),
-                    alignment: Alignment.center,
-                    child: const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    ),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) => penggantiFoto(),
-              ),
+            FutureBuilder<String?>(
+              future: _foto,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return memuatFoto();
+                }
+                final url = snapshot.data;
+                if (url == null || url.isEmpty) return penggantiFoto();
+
+                return Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, progres) {
+                    if (progres == null) return child;
+                    return memuatFoto();
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    debugPrint('Verifikasi: foto gagal ditampilkan: $error');
+                    return penggantiFoto();
+                  },
+                );
+              },
+            ),
             // Gradasi gelap agar teks di atas foto terbaca.
             const DecoratedBox(
               decoration: BoxDecoration(
@@ -916,38 +907,48 @@ class HasilVerifikasiScreen extends StatelessWidget {
   }
 
   Widget _media() {
-    final url = _urlFoto(temuan.dokumentasi);
+    final urlFoto = UrlFotoPrivat.ambil(temuan.dokumentasi);
     final punyaPeta = temuan.latitude != null && temuan.longitude != null;
+
+    Widget kosong() => Container(
+      color: const Color(0xFFECEEF2),
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.image_not_supported_outlined,
+        size: 26,
+        color: Color(0xFF98A2B3),
+      ),
+    );
 
     Widget foto() => ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (url == null)
-            Container(
-              color: const Color(0xFFECEEF2),
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.image_not_supported_outlined,
-                size: 26,
-                color: Color(0xFF98A2B3),
-              ),
-            )
-          else
-            Image.network(
-              url,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
-                color: const Color(0xFFECEEF2),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.image_not_supported_outlined,
-                  size: 26,
-                  color: Color(0xFF98A2B3),
-                ),
-              ),
-            ),
+          FutureBuilder<String?>(
+            future: urlFoto,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return Container(
+                  color: const Color(0xFFECEEF2),
+                  alignment: Alignment.center,
+                  child: const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                );
+              }
+              final url = snapshot.data;
+              if (url == null || url.isEmpty) return kosong();
+
+              return Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => kosong(),
+              );
+            },
+          ),
           Positioned(
             left: 6,
             bottom: 6,
@@ -974,7 +975,7 @@ class HasilVerifikasiScreen extends StatelessWidget {
             Expanded(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: _PetaMini(
+                child: PetaMini(
                   latitude: temuan.latitude!,
                   longitude: temuan.longitude!,
                   label: 'Peta Lokasi',
@@ -1184,13 +1185,15 @@ Widget _lencanaLabel({
 
 // =============================================================================
 // PETA MINI (ubin OpenStreetMap, tanpa paket tambahan)
+// Dibuat publik agar bisa dipakai ulang di daftar_temuan_screen.dart.
 // =============================================================================
-class _PetaMini extends StatelessWidget {
+class PetaMini extends StatelessWidget {
   final double latitude;
   final double longitude;
   final String label;
 
-  const _PetaMini({
+  const PetaMini({
+    super.key,
     required this.latitude,
     required this.longitude,
     required this.label,

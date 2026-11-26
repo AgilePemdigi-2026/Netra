@@ -1,4 +1,3 @@
-
 name: netra_app
 
 description: "NETRA - Sistem Pelayanan Aksesibilitas Publik Berbasis AI untuk Disabilitas Netra di Surabaya"
@@ -38,6 +37,9 @@ dependencies:
   # Lokasi dan Geocoding
   geolocator: ^14.1.2
   geocoding: ^5.0.0
+
+  # Membuka lokasi temuan di Google Maps (halaman Admin)
+  url_launcher: ^6.3.1
 
   # Speech Recognition
   speech_to_text: ^7.4.0
